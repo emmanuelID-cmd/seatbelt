@@ -159,6 +159,83 @@ export default function MessagesPage() {
         )}
         {messages.map((msg, i) => {
           const isMe = msg.sender_id === currentUser?.id
+          const isPriceRequest = msg.content.startsWith('PRICE_REQUEST:')
+          const requestedPrice = isPriceRequest ? parseFloat(msg.content.split(':')[1]) : 0
+          const isDriver = currentUser?.id === trip?.driver_id
+
+          if (isPriceRequest) {
+            return (
+              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+                <div style={{ background: '#1a2a1a', border: '0.5px solid #2a4a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
+                  <div style={{ fontSize: '11px', color: '#555', marginBottom: '6px', letterSpacing: '0.5px' }}>PRICE CONFIRMATION REQUEST</div>
+                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#c8b86a', marginBottom: '4px' }}>${requestedPrice.toFixed(2)}</div>
+                  <div style={{ fontSize: '11px', color: '#555', marginBottom: '12px' }}>
+                    {isMe ? 'Waiting for driver to confirm...' : 'Rider is requesting this price'}
+                  </div>
+                  {isDriver && !isMe && (
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={async () => {
+                          await supabase.from('messages').insert({
+                            trip_id: tripId,
+                            sender_id: currentUser.id,
+                            receiver_id: msg.sender_id,
+                            content: `PRICE_CONFIRMED:${requestedPrice}`,
+                          })
+                        }}
+                        style={{ flex: 1, background: '#1e3a1e', color: '#6dba6d', border: '0.5px solid #2a4a2a', borderRadius: '8px', padding: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                        ✅ Confirm Price
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await supabase.from('messages').insert({
+                            trip_id: tripId,
+                            sender_id: currentUser.id,
+                            receiver_id: msg.sender_id,
+                            content: `PRICE_DECLINED:${requestedPrice}`,
+                          })
+                        }}
+                        style={{ flex: 1, background: '#2a1a1a', color: '#f87171', border: '0.5px solid #4a2a2a', borderRadius: '8px', padding: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                        ❌ Decline
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          }
+
+          if (msg.content.startsWith('PRICE_CONFIRMED:')) {
+            const confirmedPrice = parseFloat(msg.content.split(':')[1])
+            return (
+              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+                <div style={{ background: '#1a2a1a', border: '0.5px solid #2a4a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
+                  <div style={{ fontSize: '16px', marginBottom: '4px' }}>✅</div>
+                  <div style={{ fontSize: '13px', color: '#6dba6d', fontWeight: '600', marginBottom: '4px' }}>Price Confirmed!</div>
+                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#c8b86a', marginBottom: '8px' }}>${confirmedPrice.toFixed(2)}</div>
+                  {!isDriver && (
+                    <button
+                      onClick={() => { setPaymentAmount(confirmedPrice); setShowPayment(true) }}
+                      style={{ width: '100%', background: '#c8b86a', color: '#111', border: 'none', borderRadius: '8px', padding: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                      💳 PAY NOW
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          }
+
+          if (msg.content.startsWith('PRICE_DECLINED:')) {
+            return (
+              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+                <div style={{ background: '#2a1a1a', border: '0.5px solid #4a2a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
+                  <div style={{ fontSize: '13px', color: '#f87171', fontWeight: '600' }}>❌ Price Declined</div>
+                  <div style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>Continue negotiating in the chat</div>
+                </div>
+              </div>
+            )
+          }
+
           return (
             <div key={i} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
               <div style={{ maxWidth: '75%' }}>
@@ -203,13 +280,22 @@ export default function MessagesPage() {
       {currentUser && trip && currentUser.id !== trip.driver_id && (
         <div style={{ padding: '8px 16px', background: '#111', borderTop: '0.5px solid #1a1a1a' }}>
           <button
-            onClick={() => {
+            onClick={async () => {
               const suggested = trip.suggested_price?.replace(/[^0-9.]/g, '') || ''
-              const input = prompt(`Enter the final agreed price ($):`, suggested)
+              const input = prompt('Enter the final agreed price ($):', suggested)
               if (input === null) return
               const custom = parseFloat(input)
-              if (custom > 0) { setPaymentAmount(custom); setShowPayment(true) }
-              else { alert('Please enter a valid price greater than $0') }
+              if (custom <= 0) { alert('Please enter a valid price greater than $0'); return }
+              setPaymentAmount(custom)
+              // Send price confirmation request to driver
+              const receiverId = trip.driver_id
+              await supabase.from('messages').insert({
+                trip_id: tripId,
+                sender_id: currentUser.id,
+                receiver_id: receiverId,
+                content: `PRICE_REQUEST:${custom}`,
+              })
+              alert('Price confirmation sent to driver! Waiting for approval...')
             }}
             style={{ width: '100%', background: '#1e2a1e', color: '#6dba6d', border: '0.5px solid #2a4a2a', borderRadius: '10px', padding: '11px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.5px' }}>
             🚗 CONFIRM RIDE & PAY
