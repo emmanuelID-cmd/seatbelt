@@ -76,7 +76,7 @@ export default function LoginPage() {
     setError('')
     if (isSignUp) {
       if (!fullName.trim()) { setError('Please enter your full name'); setLoading(false); return }
-      const { data, error: signUpError } = await supabase.auth.signUp({ email, password })
+      const { data, error: signUpError } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } })
       if (signUpError) { setError(signUpError.message); setLoading(false); return }
       if (data.user) {
         const initials = fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
