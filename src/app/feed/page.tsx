@@ -52,6 +52,11 @@ export default function FeedPage() {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [editingTrip, setEditingTrip] = useState<any>(null)
+  const [editPrice, setEditPrice] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [editSeats, setEditSeats] = useState('')
 
   useEffect(() => {
     checkUser()
@@ -65,6 +70,26 @@ export default function FeedPage() {
       return
     }
     setUser(session.user)
+  }
+
+  async function deleteTrip(tripId: string) {
+    await supabase.from('trips').update({ is_active: false }).eq('id', tripId)
+    setTrips(prev => prev.filter(t => t.id !== tripId))
+    setMenuOpenId(null)
+  }
+
+  async function saveEditTrip() {
+    if (!editingTrip) return
+    await supabase.from('trips').update({
+      suggested_price: editPrice,
+      notes: editNotes,
+      seats_available: parseInt(editSeats),
+    }).eq('id', editingTrip.id)
+    setTrips(prev => prev.map(t => t.id === editingTrip.id ? {
+      ...t, suggested_price: editPrice, notes: editNotes, seats_available: parseInt(editSeats)
+    } : t))
+    setEditingTrip(null)
+    setMenuOpenId(null)
   }
 
   async function fetchTrips() {
@@ -111,6 +136,37 @@ export default function FeedPage() {
         ))}
       </div>
 
+      {/* Edit Trip Modal */}
+      {editingTrip && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#1a1a1a', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', border: '0.5px solid #2a2a2a' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <span style={{ color: '#e0e0e0', fontSize: '16px', fontWeight: '600' }}>Edit Trip</span>
+              <button onClick={() => setEditingTrip(null)} style={{ background: 'none', border: 'none', color: '#555', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '4px', letterSpacing: '0.5px' }}>SUGGESTED PRICE</label>
+              <input type="text" value={editPrice} onChange={e => setEditPrice(e.target.value)} placeholder="e.g. $15"
+                style={{ width: '100%', background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }} />
+            </div>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '4px', letterSpacing: '0.5px' }}>AVAILABLE SEATS</label>
+              <input type="number" value={editSeats} onChange={e => setEditSeats(e.target.value)} placeholder="1" min="1" max="8"
+                style={{ width: '100%', background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }} />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '4px', letterSpacing: '0.5px' }}>NOTES</label>
+              <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Any additional details..."
+                style={{ width: '100%', background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none', minHeight: '80px', resize: 'none' }} />
+            </div>
+            <button onClick={saveEditTrip}
+              style={{ width: '100%', background: '#c8b86a', color: '#111', border: 'none', borderRadius: '10px', padding: '13px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+              SAVE CHANGES
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Feed */}
       <div style={{ maxWidth: '600px', margin: '0 auto' }}>
         {loading && (
@@ -141,7 +197,22 @@ export default function FeedPage() {
                 </div>
                 <div style={{ fontSize: '11px', color: '#444', marginTop: '1px' }}>📍 {trip.origin}</div>
               </div>
-              <span style={{ color: '#333', fontSize: '18px' }}>···</span>
+              <div style={{ position: 'relative' }}>
+                <span onClick={() => setMenuOpenId(menuOpenId === trip.id ? null : trip.id)}
+                  style={{ color: '#333', fontSize: '18px', cursor: 'pointer', padding: '4px 8px' }}>···</span>
+                {menuOpenId === trip.id && user?.id === trip.driver_id && (
+                  <div style={{ position: 'absolute', right: 0, top: '28px', background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '10px', zIndex: 50, minWidth: '140px', overflow: 'hidden' }}>
+                    <div onClick={() => { setEditingTrip(trip); setEditPrice(trip.suggested_price || ''); setEditNotes(trip.notes || ''); setEditSeats(String(trip.seats_available || 1)); setMenuOpenId(null) }}
+                      style={{ padding: '12px 16px', color: '#e0e0e0', fontSize: '13px', cursor: 'pointer', borderBottom: '0.5px solid #2a2a2a' }}>
+                      ✏️ Edit post
+                    </div>
+                    <div onClick={() => { if (confirm('Delete this trip?')) deleteTrip(trip.id) }}
+                      style={{ padding: '12px 16px', color: '#f87171', fontSize: '13px', cursor: 'pointer' }}>
+                      🗑️ Delete post
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ margin: '0 16px 10px', background: '#1a1a1a', borderRadius: '12px', padding: '14px', border: '0.5px solid #2a2a2a' }}>
