@@ -57,6 +57,7 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
   const [isDriver, setIsDriver] = useState(false)
+  const [hasAgreed, setHasAgreed] = useState(false)
   const [carMake, setCarMake] = useState('')
   const [carModel, setCarModel] = useState('')
   const [carYear, setCarYear] = useState('')
@@ -74,6 +75,11 @@ export default function LoginPage() {
   async function handleAuth() {
     setLoading(true)
     setError('')
+      if (isSignUp && !hasAgreed) {
+    setError('Please agree to the Terms of Service and Privacy Policy')
+    setLoading(false)
+    return
+  }
     if (isSignUp) {
       if (!fullName.trim()) { setError('Please enter your full name'); setLoading(false); return }
       const { data, error: signUpError } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } })
@@ -160,6 +166,27 @@ export default function LoginPage() {
               )}
             </>
           )}
+          
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', fontSize: '12px', lineHeight: '1.5', color: '#aaa' }}>
+              <input
+                type="checkbox"
+                checked={hasAgreed}
+                onChange={e => setHasAgreed(e.target.checked)}
+                style={{ width: '16px', height: '16px', marginTop: '2px', accentColor: '#c8b86a' }}
+              />
+              <span>
+                I agree to the{' '}
+                <a href="/terms-of-service" target="_blank" rel="noreferrer" style={{ color: '#c8b86a' }}>
+                  Terms of Service
+                </a>{' '}
+                and{' '}
+                <a href="/privacy-policy" target="_blank" rel="noreferrer" style={{ color: '#c8b86a' }}>
+                  Privacy Policy
+                </a>.
+              </span>
+            </label>
+          </div>
 
           <button onClick={handleAuth} disabled={loading}
             style={{ width: '100%', background: '#c8b86a', color: '#111', border: 'none', borderRadius: '10px', padding: '13px', fontSize: '14px', fontWeight: '700', letterSpacing: '1px', opacity: loading ? 0.7 : 1, cursor: 'pointer' }}>
@@ -184,8 +211,14 @@ export default function LoginPage() {
 )}
           <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '13px', color: '#444' }}>
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-            <span onClick={() => { setIsSignUp(!isSignUp); setError('') }} style={{ color: '#c8b86a', fontWeight: '500', cursor: 'pointer' }}>
-              {isSignUp ? 'Sign in' : 'Sign up'}
+        <span
+          onClick={() => {
+            setIsSignUp(!isSignUp)
+            setHasAgreed(false)
+            setError('')
+          }}
+          style={{ color: '#c8b86a', fontWeight: '500', cursor: 'pointer' }}
+        >              {isSignUp ? 'Sign in' : 'Sign up'}
             </span>
           </p>
         </div>
