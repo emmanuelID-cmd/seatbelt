@@ -167,6 +167,7 @@ export default function LoginPage() {
             </>
           )}
           
+        {isSignUp && (
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', fontSize: '12px', lineHeight: '1.5', color: '#aaa' }}>
               <input
@@ -187,6 +188,7 @@ export default function LoginPage() {
               </span>
             </label>
           </div>
+        )}
 
           <button onClick={handleAuth} disabled={loading}
             style={{ width: '100%', background: '#c8b86a', color: '#111', border: 'none', borderRadius: '10px', padding: '13px', fontSize: '14px', fontWeight: '700', letterSpacing: '1px', opacity: loading ? 0.7 : 1, cursor: 'pointer' }}>
