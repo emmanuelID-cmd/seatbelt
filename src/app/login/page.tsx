@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import FieldHelp from '@/components/FieldHelp'
+import { sanitizeFullName, sanitizePassword, validateEmail, validateFullName, validatePassword } from '@/lib/inputValidation'
 
 function SeatBeltLogo({ size = 80 }: { size?: number }) {
   return (
@@ -75,25 +77,50 @@ export default function LoginPage() {
   async function handleAuth() {
     setLoading(true)
     setError('')
-      if (isSignUp && !hasAgreed) {
-    setError('Please agree to the Terms of Service and Privacy Policy')
-    setLoading(false)
-    return
-  }
+
+    const emailError = validateEmail(email)
+    if (emailError) {
+      setError(emailError)
+      setLoading(false)
+      return
+    }
+
     if (isSignUp) {
-      if (!fullName.trim()) { setError('Please enter your full name'); setLoading(false); return }
-      const { data, error: signUpError } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } })
+      if (!hasAgreed) {
+        setError('Please agree to the Terms of Service and Privacy Policy.')
+        setLoading(false)
+        return
+      }
+
+      const nameError = validateFullName(fullName)
+      if (nameError) { setError(nameError); setLoading(false); return }
+
+      const passwordError = validatePassword(password)
+      if (passwordError) { setError(passwordError); setLoading(false); return }
+
+      const normalizedName = fullName.trim()
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: { data: { full_name: normalizedName } },
+      })
       if (signUpError) { setError(signUpError.message); setLoading(false); return }
+
       if (data.user) {
-        const initials = fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+        const initials = normalizedName.split(' ').map((name: string) => name[0]).join('').toUpperCase().slice(0, 2)
         await supabase.from('profiles').insert({
-          id: data.user.id, full_name: fullName, avatar_initials: initials,
-          car_make: carMake, car_model: carModel, car_year: carYear, is_driver: isDriver,
+          id: data.user.id,
+          full_name: normalizedName,
+          avatar_initials: initials,
+          car_make: carMake,
+          car_model: carModel,
+          car_year: carYear,
+          is_driver: isDriver,
         })
       }
       window.location.href = '/feed'
     } else {
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
       if (signInError) { setError(signInError.message); setLoading(false); return }
       window.location.href = '/feed'
     }
@@ -124,24 +151,32 @@ export default function LoginPage() {
 
           {isSignUp && (
             <div style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '5px', letterSpacing: '0.5px' }}>FULL NAME <span style={{ color: '#f87171' }}>*</span></label>
-              <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your full name (required)"
+              <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '5px', letterSpacing: '0.5px' }}>
+                FULL NAME <span style={{ color: '#f87171' }}>*</span>
+                <FieldHelp fieldName="full name">Required. Use 1–32 characters and up to four name parts. Letters, numbers, spaces, hyphens, and apostrophes are accepted. Example: Jordan A. Lee</FieldHelp>
+              </label>
+              <input type="text" value={fullName} onChange={e => setFullName(sanitizeFullName(e.target.value))} placeholder="Your full name (required)" maxLength={32} autoComplete="name"
                 style={{ width: '100%', background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }} />
             </div>
           )}
 
           <div style={{ marginBottom: '14px' }}>
-            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '5px', letterSpacing: '0.5px' }}>EMAIL</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com"
+            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '5px', letterSpacing: '0.5px' }}>
+              EMAIL
+              <FieldHelp fieldName="email">Required. Enter a standard personal, school, work, or business email address. Spaces and incomplete addresses are rejected. Example: you@example.com</FieldHelp>
+            </label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" autoComplete="email"
               style={{ width: '100%', background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }} />
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '5px', letterSpacing: '0.5px' }}>PASSWORD</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 6 characters"
+            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '5px', letterSpacing: '0.5px' }}>
+              PASSWORD
+              <FieldHelp fieldName="password">Required for signup. Use 8–32 characters with uppercase, lowercase, a number, and one of !.@,#$%&amp;*_-+. Spaces and other symbols are rejected. Example: Seatbelt7!</FieldHelp>
+            </label>
+            <input type="password" value={password} onChange={e => setPassword(isSignUp ? sanitizePassword(e.target.value) : e.target.value)} placeholder={isSignUp ? '8–32 characters' : 'Your password'} maxLength={isSignUp ? 32 : undefined} autoComplete={isSignUp ? 'new-password' : 'current-password'}
               style={{ width: '100%', background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }} />
           </div>
-
           {isSignUp && (
             <>
               <div style={{ marginBottom: '14px' }}>

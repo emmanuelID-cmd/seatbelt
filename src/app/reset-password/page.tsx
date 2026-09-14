@@ -1,6 +1,8 @@
 'use client'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import FieldHelp from '@/components/FieldHelp'
+import { sanitizePassword, validatePassword } from '@/lib/inputValidation'
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState('')
@@ -9,8 +11,9 @@ export default function ResetPasswordPage() {
   const [done, setDone] = useState(false)
 
   async function handleReset() {
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters')
+    const passwordError = validatePassword(password)
+    if (passwordError) {
+      setError(passwordError)
       return
     }
     setLoading(true)
@@ -40,12 +43,17 @@ export default function ResetPasswordPage() {
           </div>
         ) : (
           <>
-            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '5px', letterSpacing: '0.5px' }}>NEW PASSWORD</label>
+            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '5px', letterSpacing: '0.5px' }}>
+              NEW PASSWORD
+              <FieldHelp fieldName="new password">Required. Use 8–32 characters with uppercase, lowercase, a number, and one of !.@,#$%&amp;*_-+. Spaces and other symbols are rejected. Example: Seatbelt7!</FieldHelp>
+            </label>
             <input
               type="password"
               value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Min 6 characters"
+              onChange={e => setPassword(sanitizePassword(e.target.value))}
+              placeholder="8–32 characters"
+              maxLength={32}
+              autoComplete="new-password"
               onKeyDown={e => e.key === 'Enter' && handleReset()}
               style={{ width: '100%', background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none', marginBottom: '20px' }}
             />

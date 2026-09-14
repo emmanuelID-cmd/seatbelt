@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase, Message } from '@/lib/supabase'
 import { useRouter, useParams } from 'next/navigation'
 import PaymentModal from '@/app/components/PaymentModal'
+import FieldHelp from '@/components/FieldHelp'
+import { validateMessage } from '@/lib/inputValidation'
 
 export default function MessagesPage() {
   const router = useRouter()
@@ -10,6 +12,7 @@ export default function MessagesPage() {
   const tripId = params.tripId as string
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
+  const [messageError, setMessageError] = useState('')
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [currentProfile, setCurrentProfile] = useState<any>(null)
   const [trip, setTrip] = useState<any>(null)
@@ -79,24 +82,35 @@ export default function MessagesPage() {
   }, [tripId])
 
   async function sendMessage() {
-    if (!newMessage.trim() || !currentUser || !trip) return
-    const content = newMessage.trim()
-    setNewMessage('')
+    const validationError = validateMessage(newMessage)
+    if (validationError) {
+      setMessageError(validationError)
+      return
+    }
+    if (!currentUser || !trip) return
 
-    // Figure out receiver
+    const content = newMessage.trim()
+
     let receiverId = trip.driver_id
     if (trip.driver_id === currentUser.id) {
-      // I am the driver — find who messaged me
-      const otherMsg = messages.find(m => m.sender_id !== currentUser.id)
-      receiverId = otherMsg?.sender_id || currentUser.id
+      const otherMessage = messages.find(message => message.sender_id !== currentUser.id)
+      receiverId = otherMessage?.sender_id || currentUser.id
     }
 
-    await supabase.from('messages').insert({
+    const { error } = await supabase.from('messages').insert({
       trip_id: tripId,
       sender_id: currentUser.id,
       receiver_id: receiverId,
       content,
     })
+
+    if (error) {
+      setMessageError(error.message)
+      return
+    }
+
+    setNewMessage('')
+    setMessageError('')
   }
 
   function formatTime(timestamp: string) {
@@ -303,13 +317,26 @@ export default function MessagesPage() {
         </div>
       )}
 
+      {messageError && (
+        <div id="message-error" role="alert" style={{ padding: '8px 16px', background: '#2a1a1a', color: '#f87171', fontSize: '12px' }}>
+          {messageError}
+        </div>
+      )}
+
       {/* Input */}
       <div style={{ padding: '12px 16px', borderTop: '0.5px solid #222', display: 'flex', gap: '10px', alignItems: 'center', background: '#111', flexShrink: 0 }}>
+        <FieldHelp fieldName="message">Required to send. Use up to 140 characters. Text, punctuation, and emoji are accepted. Example: I can meet at the main entrance.</FieldHelp>
         <input
-          type="text" value={newMessage}
-          onChange={e => setNewMessage(e.target.value)}
+          type="text"
+          value={newMessage}
+          onChange={e => {
+            setNewMessage(Array.from(e.target.value).slice(0, 140).join(''))
+            if (messageError) setMessageError('')
+          }}
           onKeyDown={e => e.key === 'Enter' && sendMessage()}
           placeholder={`Message ${otherProfile?.full_name || 'driver'}...`}
+          aria-invalid={Boolean(messageError)}
+          aria-describedby={messageError ? 'message-error' : undefined}
           style={{ flex: 1, background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '99px', padding: '10px 16px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }}
         />
         <button onClick={sendMessage}
