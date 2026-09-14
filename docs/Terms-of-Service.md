@@ -223,3 +223,6 @@ If part of these Terms is unenforceable, the remaining provisions remain in effe
 Provisions that by their nature should continue after account closure may survive termination, including intellectual-property protection, confidentiality, payment obligations, dispute provisions, investigation-related retention, and lawful limitations of liability.
 
 These Terms, the Privacy Policy, and applicable feature-specific acknowledgments form the agreement governing Platform use. The Privacy Policy controls privacy and data-processing matters. These Terms control all other matters.
+---
+
+© 2026 Seatbelt by Kinoshi. All rights reserved.

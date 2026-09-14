@@ -194,3 +194,6 @@ Email: support@useseatbelt.com
 Business address: To be added when available
 
 This Privacy Policy is a working draft and must be reviewed by qualified legal and privacy counsel before publication.
+---
+
+© 2026 Seatbelt by Kinoshi. All rights reserved.
