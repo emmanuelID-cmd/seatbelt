@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase, Message } from '@/lib/supabase'
+import type { Profile, Trip } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 import { useRouter, useParams } from 'next/navigation'
 import PaymentModal from '@/app/components/PaymentModal'
 import FieldHelp from '@/components/FieldHelp'
@@ -13,16 +15,16 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [messageError, setMessageError] = useState('')
-  const [currentUser, setCurrentUser] = useState<any>(null)
-  const [currentProfile, setCurrentProfile] = useState<any>(null)
-  const [trip, setTrip] = useState<any>(null)
-  const [otherProfile, setOtherProfile] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+
+  const [trip, setTrip] = useState<Trip | null>(null)
+  const [otherProfile, setOtherProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [showPayment, setShowPayment] = useState(false)
   const [paymentAmount, setPaymentAmount] = useState(0)
+  const [paymentDriverId, setPaymentDriverId] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { loadData() }, [tripId])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   async function loadData() {
@@ -30,31 +32,36 @@ export default function MessagesPage() {
     if (!session) { router.push('/login'); return }
     setCurrentUser(session.user)
 
-    // Get current user profile
-    const { data: myProfile } = await supabase
-      .from('profiles').select('*').eq('id', session.user.id).single()
-    setCurrentProfile(myProfile)
 
     // Get trip with driver profile
     const { data: tripData } = await supabase
-      .from('trips').select('*, profiles(*)').eq('id', tripId).single()
+      .from('trips').select('*, profiles:profiles!trips_driver_id_fkey(*), rider_profile:profiles!trips_rider_id_fkey(*)').eq('id', tripId).single()
     setTrip(tripData)
 
-    // Get other person's profile
-    if (tripData?.driver_id === session.user.id) {
-      // I am the driver — find the first person who messaged me
+    // Get the other participant based on the post owner.
+    const isDriverPost = tripData?.post_type === 'driver'
+    const ownerId = isDriverPost ? tripData?.driver_id : tripData?.rider_id
+    let counterpartId = ownerId
+
+    if (ownerId === session.user.id) {
       const { data: firstMsg } = await supabase
-        .from('messages').select('sender_id').eq('trip_id', tripId)
-        .neq('sender_id', session.user.id).limit(1).single()
-      if (firstMsg) {
-        const { data: otherProf } = await supabase
-          .from('profiles').select('*').eq('id', firstMsg.sender_id).single()
-        setOtherProfile(otherProf)
-      }
-    } else {
-      // I am the rider — get the driver's profile
+        .from('messages')
+        .select('sender_id')
+        .eq('trip_id', tripId)
+        .neq('sender_id', session.user.id)
+        .limit(1)
+        .single()
+
+      counterpartId = firstMsg?.sender_id || null
+    }
+
+    if (counterpartId) {
       const { data: otherProf } = await supabase
-        .from('profiles').select('*').eq('id', tripData?.driver_id).single()
+        .from('profiles')
+        .select('*')
+        .eq('id', counterpartId)
+        .single()
+
       setOtherProfile(otherProf)
     }
 
@@ -67,6 +74,13 @@ export default function MessagesPage() {
     setLoading(false)
   }
 
+  useEffect(() => {
+    async function loadMessages() {
+      await loadData()
+    }
+
+    void loadMessages()
+  }, [tripId])
   useEffect(() => {
     if (!tripId) return
     const channel = supabase
@@ -91,10 +105,17 @@ export default function MessagesPage() {
 
     const content = newMessage.trim()
 
-    let receiverId = trip.driver_id
-    if (trip.driver_id === currentUser.id) {
+    const ownerId = trip.post_type === 'driver' ? trip.driver_id : trip.rider_id
+    let receiverId = ownerId
+
+    if (ownerId === currentUser.id) {
       const otherMessage = messages.find(message => message.sender_id !== currentUser.id)
-      receiverId = otherMessage?.sender_id || currentUser.id
+      receiverId = otherMessage?.sender_id || null
+    }
+
+    if (!receiverId || receiverId === currentUser.id) {
+      setMessageError('A conversation participant is not available yet.')
+      return
     }
 
     const { error } = await supabase.from('messages').insert({
@@ -117,10 +138,36 @@ export default function MessagesPage() {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
-  const getSenderName = (msg: any) => {
+  const getSenderName = (msg: Message) => {
     if (msg.sender_id === currentUser?.id) return 'You'
     return otherProfile?.full_name || 'User'
   }
+
+  const isDriverParticipant = Boolean(
+    currentUser &&
+    trip &&
+    (
+      (trip.post_type === 'driver' && currentUser.id === trip.driver_id) ||
+      (trip.post_type === 'rider' && currentUser.id !== trip.rider_id)
+    )
+  )
+
+  const isRiderParticipant = Boolean(
+    currentUser &&
+    trip &&
+    (
+      (trip.post_type === 'driver' && currentUser.id !== trip.driver_id) ||
+      (trip.post_type === 'rider' && currentUser.id === trip.rider_id)
+    )
+  )
+
+  const latestOffer = [...messages]
+    .reverse()
+    .find(message => message.content.startsWith('PRICE_OFFER:'))
+
+  const latestOfferAmount = latestOffer
+    ? Number(latestOffer.content.split(':')[1])
+    : 0
 
   return (
     <div style={{ height: '100vh', background: '#111', display: 'flex', flexDirection: 'column' }}>
@@ -175,7 +222,38 @@ export default function MessagesPage() {
           const isMe = msg.sender_id === currentUser?.id
           const isPriceRequest = msg.content.startsWith('PRICE_REQUEST:')
           const requestedPrice = isPriceRequest ? parseFloat(msg.content.split(':')[1]) : 0
-          const isDriver = currentUser?.id === trip?.driver_id
+          const isDriver = isDriverParticipant
+
+          const isPriceOffer = msg.content.startsWith('PRICE_OFFER:')
+          const offerAmount = isPriceOffer ? parseFloat(msg.content.split(':')[1]) : 0
+          const isPriceAccepted = msg.content.startsWith('PRICE_ACCEPTED:')
+          const acceptedAmount = isPriceAccepted ? parseFloat(msg.content.split(':')[1]) : 0
+
+          if (isPriceOffer) {
+            return (
+              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+                <div style={{ background: '#1a2a1a', border: '0.5px solid #2a4a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
+                  <div style={{ fontSize: '11px', color: '#555', marginBottom: '6px', letterSpacing: '0.5px' }}>DRIVER OFFER</div>
+                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#c8b86a' }}>${offerAmount.toFixed(2)}</div>
+                  <div style={{ fontSize: '11px', color: '#555', marginTop: '6px' }}>
+                    {isMe ? 'Offer sent. Waiting for Rider acceptance.' : 'Driver offer received.'}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          if (isPriceAccepted) {
+            return (
+              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+                <div style={{ background: '#1a2a1a', border: '0.5px solid #2a4a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
+                  <div style={{ fontSize: '16px', marginBottom: '4px' }}>✅</div>
+                  <div style={{ fontSize: '13px', color: '#6dba6d', fontWeight: '600' }}>Ride accepted</div>
+                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#c8b86a', marginTop: '4px' }}>${acceptedAmount.toFixed(2)}</div>
+                </div>
+              </div>
+            )
+          }
 
           if (isPriceRequest) {
             return (
@@ -192,7 +270,7 @@ export default function MessagesPage() {
                         onClick={async () => {
                           await supabase.from('messages').insert({
                             trip_id: tripId,
-                            sender_id: currentUser.id,
+                            sender_id: currentUser?.id || '',
                             receiver_id: msg.sender_id,
                             content: `PRICE_CONFIRMED:${requestedPrice}`,
                           })
@@ -204,7 +282,7 @@ export default function MessagesPage() {
                         onClick={async () => {
                           await supabase.from('messages').insert({
                             trip_id: tripId,
-                            sender_id: currentUser.id,
+                            sender_id: currentUser?.id || '',
                             receiver_id: msg.sender_id,
                             content: `PRICE_DECLINED:${requestedPrice}`,
                           })
@@ -281,7 +359,7 @@ export default function MessagesPage() {
         <PaymentModal
           amount={paymentAmount}
           tripId={tripId}
-          driverId={trip?.driver_id || ''}
+          driverId={paymentDriverId || trip?.driver_id || ''}
           onSuccess={() => {
             setShowPayment(false)
             alert('Payment successful! Your ride is confirmed. 🚗')
@@ -290,30 +368,65 @@ export default function MessagesPage() {
         />
       )}
 
-      {/* Confirm Ride Button - only show to riders */}
-      {currentUser && trip && currentUser.id !== trip.driver_id && (
+      {/* Negotiation actions */}
+      {(isDriverParticipant || (isRiderParticipant && latestOffer)) && (
         <div style={{ padding: '8px 16px', background: '#111', borderTop: '0.5px solid #1a1a1a' }}>
-          <button
-            onClick={async () => {
-              const suggested = trip.suggested_price?.replace(/[^0-9.]/g, '') || ''
-              const input = prompt('Enter the final agreed price ($):', suggested)
-              if (input === null) return
-              const custom = parseFloat(input)
-              if (custom <= 0) { alert('Please enter a valid price greater than $0'); return }
-              setPaymentAmount(custom)
-              // Send price confirmation request to driver
-              const receiverId = trip.driver_id
-              await supabase.from('messages').insert({
-                trip_id: tripId,
-                sender_id: currentUser.id,
-                receiver_id: receiverId,
-                content: `PRICE_REQUEST:${custom}`,
-              })
-              alert('Price confirmation sent to driver! Waiting for approval...')
-            }}
-            style={{ width: '100%', background: '#1e2a1e', color: '#6dba6d', border: '0.5px solid #2a4a2a', borderRadius: '10px', padding: '11px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.5px' }}>
-            🚗 CONFIRM RIDE & PAY
-          </button>
+          {isDriverParticipant && (
+            <button
+              onClick={async () => {
+                const input = prompt('Enter your offer ($1.00–$999.99):')
+                if (input === null) return
+
+                const offer = Number(input)
+
+                if (!Number.isFinite(offer) || offer < 1 || offer > 999.99) {
+                  alert('Enter an offer from $1.00 to $999.99.')
+                  return
+                }
+
+                if (!trip || !currentUser) return
+
+                const receiverId = trip.post_type === 'driver'
+                  ? messages.find(message => message.sender_id !== currentUser?.id)?.sender_id
+                  : trip.rider_id
+
+                if (!receiverId || !currentUser) {
+                  alert('The other participant has not joined this negotiation yet.')
+                  return
+                }
+
+                await supabase.from('messages').insert({
+                  trip_id: tripId,
+                  sender_id: currentUser.id,
+                  receiver_id: receiverId,
+                  content: `PRICE_OFFER:${offer.toFixed(2)}`,
+                })
+              }}
+              style={{ width: '100%', background: '#1e2a1e', color: '#6dba6d', border: '0.5px solid #2a4a2a', borderRadius: '10px', padding: '11px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.5px' }}>
+              🚗 SEND DRIVER OFFER
+            </button>
+          )}
+
+          {isRiderParticipant && latestOffer && (
+            <button
+              onClick={async () => {
+                if (!currentUser) return
+
+                await supabase.from('messages').insert({
+                  trip_id: tripId,
+                  sender_id: currentUser.id,
+                  receiver_id: latestOffer.sender_id,
+                  content: `PRICE_ACCEPTED:${latestOfferAmount.toFixed(2)}`,
+                })
+
+                setPaymentAmount(latestOfferAmount)
+                setPaymentDriverId(latestOffer.sender_id)
+                setShowPayment(true)
+              }}
+              style={{ width: '100%', background: '#c8b86a', color: '#111', border: 'none', borderRadius: '10px', padding: '11px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.5px' }}>
+              ✅ ACCEPT DRIVER OFFER ${latestOfferAmount.toFixed(2)}
+            </button>
+          )}
         </div>
       )}
 

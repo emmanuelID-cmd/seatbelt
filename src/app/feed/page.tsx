@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase, Trip } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 
 function SeatBeltLogo({ size = 36 }: { size?: number }) {
@@ -51,17 +52,13 @@ export default function FeedPage() {
   const router = useRouter()
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
-  const [editingTrip, setEditingTrip] = useState<any>(null)
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
   const [editPrice, setEditPrice] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editSeats, setEditSeats] = useState('')
 
-  useEffect(() => {
-    checkUser()
-    fetchTrips()
-  }, [])
 
   async function checkUser() {
     const { data: { session } } = await supabase.auth.getSession()
@@ -95,12 +92,21 @@ export default function FeedPage() {
   async function fetchTrips() {
     const { data } = await supabase
       .from('trips')
-      .select('*, profiles(*)')
+      .select('*, profiles:profiles!trips_driver_id_fkey(*), rider_profile:profiles!trips_rider_id_fkey(*)')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
     setTrips(data || [])
     setLoading(false)
   }
+
+  useEffect(() => {
+    async function loadFeed() {
+      await checkUser()
+      await fetchTrips()
+    }
+
+    void loadFeed()
+  }, [])
 
   async function signOut() {
     await supabase.auth.signOut()
@@ -188,19 +194,19 @@ export default function FeedPage() {
           <div key={trip.id} style={{ borderBottom: '0.5px solid #1e1e1e', paddingBottom: '4px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px' }}>
               <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#2a2a2a', border: '0.5px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '600', fontSize: '12px', color: '#aaa', flexShrink: 0 }}>
-                {trip.profiles?.avatar_initials || '??'}
+                {(trip.post_type === 'driver' ? trip.profiles : trip.rider_profile)?.avatar_initials || '??'}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ color: '#e0e0e0', fontSize: '13px', fontWeight: '500' }}>{trip.profiles?.full_name || 'Driver'}</span>
-                  <span style={{ background: '#1a2a1a', color: '#6dba6d', fontSize: '9px', fontWeight: '600', padding: '2px 7px', borderRadius: '99px', letterSpacing: '0.5px' }}>DRIVER</span>
+                  <span style={{ color: '#e0e0e0', fontSize: '13px', fontWeight: '500' }}>{(trip.post_type === 'driver' ? trip.profiles : trip.rider_profile)?.full_name || (trip.post_type === 'driver' ? 'Driver' : 'Rider')}</span>
+                  <span style={{ background: '#1a2a1a', color: '#6dba6d', fontSize: '9px', fontWeight: '600', padding: '2px 7px', borderRadius: '99px', letterSpacing: '0.5px' }}>{trip.post_type === 'driver' ? 'DRIVER' : 'RIDER REQUEST'}</span>
                 </div>
-                <div style={{ fontSize: '11px', color: '#444', marginTop: '1px' }}>📍 {trip.origin}</div>
+                <div style={{ fontSize: '11px', color: '#444', marginTop: '1px' }}>📍 {trip.post_type === 'driver' ? 'Driver visible via GPS' : trip.origin || 'Pickup location'}</div>
               </div>
               <div style={{ position: 'relative' }}>
                 <span onClick={() => setMenuOpenId(menuOpenId === trip.id ? null : trip.id)}
                   style={{ color: '#333', fontSize: '18px', cursor: 'pointer', padding: '4px 8px' }}>···</span>
-                {menuOpenId === trip.id && user?.id === trip.driver_id && (
+                {menuOpenId === trip.id && user?.id === (trip.post_type === 'driver' ? trip.driver_id : trip.rider_id) && (
                   <div style={{ position: 'absolute', right: 0, top: '28px', background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '10px', zIndex: 50, minWidth: '140px', overflow: 'hidden' }}>
                     <div onClick={() => { setEditingTrip(trip); setEditPrice(trip.suggested_price || ''); setEditNotes(trip.notes || ''); setEditSeats(String(trip.seats_available || 1)); setMenuOpenId(null) }}
                       style={{ padding: '12px 16px', color: '#e0e0e0', fontSize: '13px', cursor: 'pointer', borderBottom: '0.5px solid #2a2a2a' }}>
@@ -223,13 +229,13 @@ export default function FeedPage() {
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#c47a5a' }}></div>
                 </div>
                 <div>
-                  <div style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: '500' }}>{trip.origin}</div>
-                  <div style={{ color: '#666', fontSize: '12px', marginTop: '6px' }}>{trip.destination}</div>
+                  <div style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: '500' }}>{trip.origin || 'Driver available nearby'}</div>
+                  <div style={{ color: '#666', fontSize: '12px', marginTop: '6px' }}>{trip.destination || 'GPS visibility available'}</div>
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                <span style={{ background: '#222', border: '0.5px solid #333', borderRadius: '99px', padding: '3px 10px', fontSize: '11px', color: '#777' }}>🕐 {trip.departure_time}</span>
+                {trip.departure_time && <span style={{ background: '#222', border: '0.5px solid #333', borderRadius: '99px', padding: '3px 10px', fontSize: '11px', color: '#777' }}>🕐 {trip.departure_time}</span>}
                 <span style={{ background: '#222', border: '0.5px solid #333', borderRadius: '99px', padding: '3px 10px', fontSize: '11px', color: '#777' }}>💺 {trip.seats_available} seat{trip.seats_available > 1 ? 's' : ''}</span>
                 {trip.profiles?.car_make && <span style={{ background: '#222', border: '0.5px solid #333', borderRadius: '99px', padding: '3px 10px', fontSize: '11px', color: '#777' }}>🚗 {trip.profiles.car_make} {trip.profiles.car_model}</span>}
               </div>
@@ -243,7 +249,7 @@ export default function FeedPage() {
                 </div>
                 <button onClick={() => router.push(`/messages/${trip.id}`)}
                   style={{ background: '#1e2e1e', color: '#6dba6d', border: '0.5px solid #2a4a2a', borderRadius: '99px', padding: '8px 18px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                  Message driver
+                  {trip.post_type === 'driver' ? 'Message driver' : 'Message rider'}
                 </button>
               </div>
             </div>

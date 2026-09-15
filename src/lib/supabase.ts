@@ -26,16 +26,22 @@ export type Profile = {
 
 export type Trip = {
   id: string
-  driver_id: string
-  origin: string
-  destination: string
-  departure_time: string
+  driver_id: string | null
+  rider_id: string | null
+  post_type: 'driver' | 'rider'
+  origin: string | null
+  destination: string | null
+  departure_time: string | null
   seats_available: number
-  suggested_price: string
-  notes: string
+  suggested_price: string | null
+  price_min: number | null
+  price_max: number | null
+  currency_code: string
+  notes: string | null
   is_active: boolean
   created_at: string
   profiles?: Profile
+  rider_profile?: Profile
 }
 
 export type Message = {
