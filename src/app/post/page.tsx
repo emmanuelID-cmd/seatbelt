@@ -10,6 +10,8 @@ export default function PostTripPage() {
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
   const [asap, setAsap] = useState(true)
+  const [departureDate, setDepartureDate] = useState('')
+  const [departureTime, setDepartureTime] = useState('')
   const [seats, setSeats] = useState('1')
   const [minPrice, setMinPrice] = useState('1.00')
   const [maxPrice, setMaxPrice] = useState('1.00')
@@ -27,9 +29,25 @@ export default function PostTripPage() {
       return
     }
 
+    let departureTimestamp = new Date()
+
     if (postType === 'rider' && !asap) {
-      setError('Trips are currently for immediate travel. Check ASAP to continue.')
-      return
+      if (!departureDate || !departureTime) {
+        setError('Select a departure date and time, or choose ASAP.')
+        return
+      }
+
+      departureTimestamp = new Date(`${departureDate}T${departureTime}`)
+      if (Number.isNaN(departureTimestamp.getTime())) {
+        setError('Select a valid departure date and time.')
+        return
+      }
+
+
+      if (departureTimestamp <= new Date()) {
+        setError('Choose a future departure date and time, or choose Present.')
+        return
+      }
     }
 
     if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 4) {
@@ -68,7 +86,7 @@ export default function PostTripPage() {
       post_type: postType,
       origin: postType === 'rider' ? origin.trim() : null,
       destination: postType === 'rider' ? destination.trim() : null,
-      departure_time: postType === 'rider' ? new Date().toISOString() : null,
+      departure_time: postType === 'rider' ? departureTimestamp.toISOString() : null,
       seats_available: seatCount,
       suggested_price: postType === 'rider'
         ? `${formattedMinimum}-${formattedMaximum}`
@@ -161,18 +179,53 @@ export default function PostTripPage() {
                 />
               </div>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', color: '#aaa', fontSize: '13px' }}>
-                <input
-                  type="checkbox"
-                  checked={asap}
-                  onChange={e => setAsap(e.target.checked)}
-                  style={{ accentColor: '#5a7aaa' }}
-                />
-                ASAP — use the current time
-                <FieldHelp fieldName="ASAP">
-                  Trips are currently for immediate travel only. Scheduled trips will be added later.
-                </FieldHelp>
-              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 0.75fr) auto', gap: '8px', alignItems: 'end', marginBottom: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '10px', color: '#555', display: 'block', marginBottom: '4px', letterSpacing: '0.5px' }}>
+                    📅 DATE
+                    <FieldHelp fieldName="departure date">
+                      Choose the travel date using the date editor, or choose Present for immediate travel.
+                    </FieldHelp>
+                  </label>
+                  <input
+                    type="date"
+                    value={departureDate}
+                    onChange={e => setDepartureDate(e.target.value)}
+                    disabled={asap}
+                    aria-label="Departure date"
+                    style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', color: '#e0e0e0', width: '100%', minWidth: 0, outline: 'none', opacity: asap ? 0.5 : 1 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', color: '#555', display: 'block', marginBottom: '4px', letterSpacing: '0.5px' }}>
+                    🕐 TIME
+                    <FieldHelp fieldName="departure time">
+                      Choose a future travel time, or choose Present for immediate travel. Time controls move in 15-minute intervals, but you may enter another minute.
+                    </FieldHelp>
+                  </label>
+                  <input
+                    type="time"
+                    step="900"
+                    value={departureTime}
+                    onChange={e => setDepartureTime(e.target.value)}
+                    disabled={asap}
+                    aria-label="Departure time"
+                    style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', color: '#e0e0e0', width: '100%', minWidth: 0, outline: 'none', opacity: asap ? 0.5 : 1 }}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingBottom: '10px', color: '#aaa', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                  <input
+                    type="checkbox"
+                    checked={asap}
+                    onChange={e => setAsap(e.target.checked)}
+                    style={{ accentColor: '#5a7aaa', margin: 0 }}
+                  />
+                  Present
+                  <FieldHelp fieldName="Present">
+                    Use the current date and time for immediate travel. Clear Present to schedule a future departure.
+                  </FieldHelp>
+                </label>
+              </div>
             </>
           )}
 
@@ -211,7 +264,7 @@ export default function PostTripPage() {
                   value={minPrice}
                   min="1"
                   max="999.99"
-                  step="0.01"
+                  step="1"
                   onChange={e => setMinPrice(e.target.value)}
                   placeholder="$1.00"
                   aria-label="Minimum price"
@@ -223,7 +276,7 @@ export default function PostTripPage() {
                   value={maxPrice}
                   min="1"
                   max="999.99"
-                  step="0.01"
+                  step="1"
                   onChange={e => setMaxPrice(e.target.value)}
                   placeholder="$999.99"
                   aria-label="Maximum price"
