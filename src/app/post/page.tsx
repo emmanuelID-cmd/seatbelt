@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import FieldHelp from '@/components/FieldHelp'
 
+type FieldErrors = Record<string, string>
+
 export default function PostTripPage() {
   const router = useRouter()
   const [postType, setPostType] = useState<'driver' | 'rider'>('driver')
@@ -17,58 +19,97 @@ export default function PostTripPage() {
   const [maxPrice, setMaxPrice] = useState('1.00')
   const [caption, setCaption] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
+  const [submissionError, setSubmissionError] = useState('')
 
-  async function postTrip() {
+  function updatePrice(setPrice: (value: string) => void, value: string) {
+    if (!value) {
+      setPrice('')
+      return
+    }
+
+    if (!/^\d*\.?\d{0,2}$/.test(value)) return
+
+    const amount = Number(value)
+    if (!Number.isFinite(amount) || amount < 1 || amount > 999.99) return
+
+    setPrice(value)
+  }
+
+  function blockInvalidPriceKey(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (['-', '+', 'e', 'E'].includes(event.key)) event.preventDefault()
+  }
+
+  function getValidationErrors(): FieldErrors {
+    const errors: FieldErrors = {}
     const seatCount = Number(seats)
     const minimum = Number(minPrice)
     const maximum = Number(maxPrice)
 
-    if (postType === 'rider' && (!origin.trim() || !destination.trim())) {
-      setError('Please enter a departure and arrival location.')
-      return
-    }
+    if (postType === 'rider') {
+      if (!origin.trim()) errors.origin = 'Departure is required.'
+      if (!destination.trim()) errors.destination = 'Arrival is required.'
 
-    let departureTimestamp = new Date()
+      if (!asap) {
+        if (!departureDate) errors.departureDate = 'Departure date is required.'
+        if (!departureTime) errors.departureTime = 'Departure time is required.'
 
-    if (postType === 'rider' && !asap) {
-      if (!departureDate || !departureTime) {
-        setError('Select a departure date and time, or choose ASAP.')
-        return
+        if (departureDate && departureTime) {
+          const departureTimestamp = new Date(`${departureDate}T${departureTime}`)
+          if (Number.isNaN(departureTimestamp.getTime())) {
+            errors.schedule = 'Select a valid departure date and time.'
+          } else if (departureTimestamp <= new Date()) {
+            errors.schedule = 'Choose a future departure date and time, or choose Present.'
+          }
+        }
       }
 
-      departureTimestamp = new Date(`${departureDate}T${departureTime}`)
-      if (Number.isNaN(departureTimestamp.getTime())) {
-        setError('Select a valid departure date and time.')
-        return
+      if (!minPrice.trim()) {
+        errors.minPrice = 'Minimum wager price is required.'
+      } else if (!Number.isFinite(minimum) || minimum < 1 || minimum > 999.99) {
+        errors.minPrice = 'Minimum wager price must be from $1.00 to $999.99.'
       }
 
+      if (!maxPrice.trim()) {
+        errors.maxPrice = 'Maximum wager price is required.'
+      } else if (!Number.isFinite(maximum) || maximum < 1 || maximum > 999.99) {
+        errors.maxPrice = 'Maximum wager price must be from $1.00 to $999.99.'
+      }
 
-      if (departureTimestamp <= new Date()) {
-        setError('Choose a future departure date and time, or choose Present.')
-        return
+      if (Number.isFinite(minimum) && Number.isFinite(maximum) && minimum > maximum) {
+        errors.priceRange = 'Minimum wager price cannot exceed maximum wager price.'
       }
     }
 
     if (!Number.isInteger(seatCount) || seatCount < 1 || seatCount > 4) {
-      setError('Seats must be a whole number from 1 to 4.')
+      errors.seats = 'Seats must be a whole number from 1 to 4.'
+    }
+
+    return errors
+  }
+
+  const validationErrors = getValidationErrors()
+  const visibleErrors = [...new Set([
+    ...(hasAttemptedSubmit ? Object.values(validationErrors) : []),
+    ...(submissionError ? [submissionError] : []),
+  ])]
+  const hasFieldError = (fieldName: string) => hasAttemptedSubmit && Boolean(validationErrors[fieldName])
+  async function postTrip() {
+    setHasAttemptedSubmit(true)
+
+    if (Object.keys(getValidationErrors()).length > 0) {
       return
     }
 
-    if (
-      postType === 'rider' &&
-      (!Number.isFinite(minimum) ||
-        !Number.isFinite(maximum) ||
-        minimum < 1 ||
-        maximum > 999.99 ||
-        minimum > maximum)
-    ) {
-      setError('Enter a price range from $1.00 to $999.99.')
-      return
-    }
+    const seatCount = Number(seats)
+    const minimum = Number(minPrice)
+    const maximum = Number(maxPrice)
+    const departureTimestamp = postType === 'rider' && !asap
+      ? new Date(`${departureDate}T${departureTime}`)
+      : new Date()
 
     setLoading(true)
-    setError('')
+    setSubmissionError('')
 
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -99,7 +140,7 @@ export default function PostTripPage() {
     })
 
     if (tripError) {
-      setError(tripError.message)
+      setSubmissionError(tripError.message)
       setLoading(false)
       return
     }
@@ -136,9 +177,12 @@ export default function PostTripPage() {
 
         <div style={{ background: '#1a1a1a', borderRadius: '16px', padding: '20px', border: '0.5px solid #2a2a2a' }}>
 
-          {error && (
-            <div style={{ background: '#2a1a1a', border: '0.5px solid #5a2a2a', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#f87171' }}>
-              {error}
+          {visibleErrors.length > 0 && (
+            <div id="post-errors" role="alert" aria-live="assertive" style={{ background: '#2a1a1a', border: '0.5px solid #5a2a2a', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#f87171' }}>
+              <div style={{ fontWeight: '700', marginBottom: '6px' }}>Please correct the following:</div>
+              <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                {visibleErrors.map(message => <li key={message}>{message}</li>)}
+              </ul>
             </div>
           )}
 
@@ -148,9 +192,7 @@ export default function PostTripPage() {
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>
                   📍 DEPARTING FROM
-                  <FieldHelp fieldName="departure">
-                    Required location. Select a location from map search. Typed search text is limited to 32 characters.
-                  </FieldHelp>
+
                 </label>
                 <input
                   type="text"
@@ -158,16 +200,16 @@ export default function PostTripPage() {
                   onChange={e => setOrigin(e.target.value)}
                   placeholder="e.g. Coney Island, Brooklyn"
                   maxLength={32}
-                  style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
+                  aria-invalid={hasFieldError('origin')}
+                  aria-describedby={hasFieldError('origin') ? 'post-errors' : undefined}
+                  style={{ background: '#222', border: hasFieldError('origin') ? '1px solid #f87171' : '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
                 />
               </div>
 
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>
                   🏁 ARRIVAL
-                  <FieldHelp fieldName="arrival">
-                    Required location. Select a location from map search. Typed search text is limited to 32 characters.
-                  </FieldHelp>
+
                 </label>
                 <input
                   type="text"
@@ -175,7 +217,9 @@ export default function PostTripPage() {
                   onChange={e => setDestination(e.target.value)}
                   placeholder="e.g. Downtown Brooklyn"
                   maxLength={32}
-                  style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
+                  aria-invalid={hasFieldError('destination')}
+                  aria-describedby={hasFieldError('destination') ? 'post-errors' : undefined}
+                  style={{ background: '#222', border: hasFieldError('destination') ? '1px solid #f87171' : '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
                 />
               </div>
 
@@ -183,9 +227,7 @@ export default function PostTripPage() {
                 <div>
                   <label style={{ fontSize: '10px', color: '#555', display: 'block', marginBottom: '4px', letterSpacing: '0.5px' }}>
                     📅 DATE
-                    <FieldHelp fieldName="departure date">
-                      Choose the travel date using the date editor, or choose Present for immediate travel.
-                    </FieldHelp>
+
                   </label>
                   <input
                     type="date"
@@ -193,15 +235,15 @@ export default function PostTripPage() {
                     onChange={e => setDepartureDate(e.target.value)}
                     disabled={asap}
                     aria-label="Departure date"
-                    style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', color: '#e0e0e0', width: '100%', minWidth: 0, outline: 'none', opacity: asap ? 0.5 : 1 }}
+                    aria-invalid={hasFieldError('departureDate') || hasFieldError('schedule')}
+                    aria-describedby={hasFieldError('departureDate') || hasFieldError('schedule') ? 'post-errors' : undefined}
+                    style={{ background: '#222', border: hasFieldError('departureDate') || hasFieldError('schedule') ? '1px solid #f87171' : '0.5px solid #333', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', color: '#e0e0e0', width: '100%', minWidth: 0, outline: 'none', opacity: asap ? 0.5 : 1 }}
                   />
                 </div>
                 <div>
                   <label style={{ fontSize: '10px', color: '#555', display: 'block', marginBottom: '4px', letterSpacing: '0.5px' }}>
                     🕐 TIME
-                    <FieldHelp fieldName="departure time">
-                      Choose a future travel time, or choose Present for immediate travel. Time controls move in 15-minute intervals, but you may enter another minute.
-                    </FieldHelp>
+
                   </label>
                   <input
                     type="time"
@@ -210,7 +252,9 @@ export default function PostTripPage() {
                     onChange={e => setDepartureTime(e.target.value)}
                     disabled={asap}
                     aria-label="Departure time"
-                    style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', color: '#e0e0e0', width: '100%', minWidth: 0, outline: 'none', opacity: asap ? 0.5 : 1 }}
+                    aria-invalid={hasFieldError('departureTime') || hasFieldError('schedule')}
+                    aria-describedby={hasFieldError('departureTime') || hasFieldError('schedule') ? 'post-errors' : undefined}
+                    style={{ background: '#222', border: hasFieldError('departureTime') || hasFieldError('schedule') ? '1px solid #f87171' : '0.5px solid #333', borderRadius: '8px', padding: '9px 10px', fontSize: '13px', color: '#e0e0e0', width: '100%', minWidth: 0, outline: 'none', opacity: asap ? 0.5 : 1 }}
                   />
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingBottom: '10px', color: '#aaa', fontSize: '12px', whiteSpace: 'nowrap' }}>
@@ -221,9 +265,7 @@ export default function PostTripPage() {
                     style={{ accentColor: '#5a7aaa', margin: 0 }}
                   />
                   Present
-                  <FieldHelp fieldName="Present">
-                    Use the current date and time for immediate travel. Clear Present to schedule a future departure.
-                  </FieldHelp>
+
                 </label>
               </div>
             </>
@@ -233,14 +275,14 @@ export default function PostTripPage() {
           <div style={{ marginBottom: '14px' }}>
             <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>
               💺 {postType === 'driver' ? 'SEATS FIT' : 'SEATS NEEDED'}
-              <FieldHelp fieldName="seats">
-                Choose 1–4 seats. Driver capacity must follow legal vehicle seating limits.
-              </FieldHelp>
+
             </label>
             <select
               value={seats}
               onChange={e => setSeats(e.target.value)}
-              style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
+              aria-invalid={hasFieldError('seats')}
+              aria-describedby={hasFieldError('seats') ? 'post-errors' : undefined}
+              style={{ background: '#222', border: hasFieldError('seats') ? '1px solid #f87171' : '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
             >
               <option>1</option>
               <option>2</option>
@@ -254,9 +296,7 @@ export default function PostTripPage() {
             <div style={{ marginBottom: '14px' }}>
               <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>
                 💰 WAGER PRICE RANGE
-                <FieldHelp fieldName="wager price range">
-                  Enter an estimated range from $1.00 to $999.99. Drivers may offer below or above this estimate.
-                </FieldHelp>
+
               </label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <input
@@ -265,10 +305,13 @@ export default function PostTripPage() {
                   min="1"
                   max="999.99"
                   step="1"
-                  onChange={e => setMinPrice(e.target.value)}
+                  onChange={e => updatePrice(setMinPrice, e.target.value)}
+                  onKeyDown={blockInvalidPriceKey}
                   placeholder="$1.00"
                   aria-label="Minimum price"
-                  style={{ flex: 1, background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }}
+                  aria-invalid={hasFieldError('minPrice') || hasFieldError('priceRange')}
+                  aria-describedby={hasFieldError('minPrice') || hasFieldError('priceRange') ? 'post-errors' : undefined}
+                  style={{ flex: 1, background: '#222', border: hasFieldError('minPrice') || hasFieldError('priceRange') ? '1px solid #f87171' : '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }}
                 />
                 <span style={{ color: '#777' }}>to</span>
                 <input
@@ -277,10 +320,13 @@ export default function PostTripPage() {
                   min="1"
                   max="999.99"
                   step="1"
-                  onChange={e => setMaxPrice(e.target.value)}
+                  onChange={e => updatePrice(setMaxPrice, e.target.value)}
+                  onKeyDown={blockInvalidPriceKey}
                   placeholder="$999.99"
                   aria-label="Maximum price"
-                  style={{ flex: 1, background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }}
+                  aria-invalid={hasFieldError('maxPrice') || hasFieldError('priceRange')}
+                  aria-describedby={hasFieldError('maxPrice') || hasFieldError('priceRange') ? 'post-errors' : undefined}
+                  style={{ flex: 1, background: '#222', border: hasFieldError('maxPrice') || hasFieldError('priceRange') ? '1px solid #f87171' : '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }}
                 />
               </div>
             </div>
@@ -291,7 +337,7 @@ export default function PostTripPage() {
             <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>
               ✍️ COMMENT / NOTE
               <FieldHelp fieldName="comment">
-                Optional. Up to 280 characters. Example: Heading to the Mall in Manhattan, any driver nearby?
+                Optional. Up to 280 characters.
               </FieldHelp>
             </label>
             <textarea
