@@ -60,7 +60,7 @@ export default function ProfileSettingsPage() {
       return
     }
 
-    router.push('/feed')
+    router.push(mode === 'driver' ? '/verify-identity' : '/feed')
   }
 
   if (loading) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#111', color: '#777' }}>Loading settings...</div>

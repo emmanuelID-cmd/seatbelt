@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-06-24.dahlia' as any,
-})
+function getStripe() {
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) throw new Error('Payments are temporarily unavailable. Please try again later.')
+  return new Stripe(secretKey, { apiVersion: '2026-06-24.dahlia' })
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,7 +18,7 @@ export async function POST(req: NextRequest) {
     // Driver receives amount minus 2.5%
     const applicationFee = Math.round(amountInCents * 0.05)
 
-    const paymentIntent = await stripe.paymentIntents.create({
+    const paymentIntent = await getStripe().paymentIntents.create({
       amount: amountInCents,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
@@ -30,7 +32,8 @@ export async function POST(req: NextRequest) {
       clientSecret: paymentIntent.client_secret,
       applicationFee,
     })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Payments are temporarily unavailable. Please try again later.'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
