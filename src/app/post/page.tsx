@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import FieldHelp from '@/components/FieldHelp'
@@ -8,7 +8,8 @@ type FieldErrors = Record<string, string>
 
 export default function PostTripPage() {
   const router = useRouter()
-  const [postType, setPostType] = useState<'driver' | 'rider'>('driver')
+  const [postType, setPostType] = useState<'driver' | 'rider'>('rider')
+  const [modeReady, setModeReady] = useState(false)
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')
   const [asap, setAsap] = useState(true)
@@ -21,6 +22,29 @@ export default function PostTripPage() {
   const [loading, setLoading] = useState(false)
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false)
   const [submissionError, setSubmissionError] = useState('')
+
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        router.push('/login')
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('last_session_mode')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      if (profile?.last_session_mode !== 'rider' && profile?.last_session_mode !== 'driver') {
+        router.push('/login')
+        return
+      }
+
+      setPostType(profile.last_session_mode)
+      setModeReady(true)
+    })
+  }, [router])
 
   function updatePrice(setPrice: (value: string) => void, value: string) {
     if (!value) {
@@ -158,21 +182,11 @@ export default function PostTripPage() {
       </div>
 
       <div style={{ maxWidth: '500px', margin: '0 auto', padding: '16px' }}>
+        {!modeReady && <div style={{ color: '#777', textAlign: 'center', padding: '24px' }}>Loading session mode...</div>}
+        {modeReady && <>
 
-        {/* Post type toggle */}
-        <div style={{ display: 'flex', background: '#1a1a1a', borderRadius: '12px', padding: '4px', marginBottom: '20px', border: '0.5px solid #2a2a2a' }}>
-          <button
-            onClick={() => setPostType('driver')}
-            style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: postType === 'driver' ? '#2a3a2a' : 'transparent', color: postType === 'driver' ? '#6dba6d' : '#444', fontSize: '13px', fontWeight: '600', letterSpacing: '0.5px' }}
-          >
-            🚗 I&apos;M DRIVING
-          </button>
-          <button
-            onClick={() => setPostType('rider')}
-            style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: postType === 'rider' ? '#1a2a3a' : 'transparent', color: postType === 'rider' ? '#6d8dba' : '#444', fontSize: '13px', fontWeight: '600', letterSpacing: '0.5px' }}
-          >
-            🙋 I NEED A RIDE
-          </button>
+        <div style={{ background: postType === 'driver' ? '#2a3a2a' : '#1a2a3a', borderRadius: '12px', padding: '12px', marginBottom: '20px', border: '0.5px solid #2a2a2a', color: postType === 'driver' ? '#6dba6d' : '#6d8dba', fontSize: '13px', fontWeight: '600', letterSpacing: '0.5px', textAlign: 'center' }}>
+          {postType === 'driver' ? '🚗 POSTING AS DRIVER' : '🙋 POSTING AS RIDER'}
         </div>
 
         <div style={{ background: '#1a1a1a', borderRadius: '16px', padding: '20px', border: '0.5px solid #2a2a2a' }}>
@@ -360,6 +374,7 @@ export default function PostTripPage() {
             {loading ? 'POSTING...' : postType === 'driver' ? '🚗 POST TRIP TO FEED' : '🙋 POST RIDE REQUEST'}
           </button>
         </div>
+        </>}
       </div>
     </div>
   )

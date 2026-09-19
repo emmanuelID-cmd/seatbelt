@@ -22,6 +22,9 @@ export type Profile = {
   rating: number
   total_rides: number
   is_driver: boolean
+  account_role: 'rider' | 'driver' | 'both' | null
+  last_session_mode: 'rider' | 'driver' | null
+  session_mode_reassignment_seen: boolean
 }
 
 export type Trip = {

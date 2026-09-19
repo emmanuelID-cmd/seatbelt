@@ -60,18 +60,45 @@ export default function FeedPage() {
   const [editSeats, setEditSeats] = useState('')
 
 
-  async function checkUser() {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      window.location.href = '/login'
-      return
-    }
-    setUser(session.user)
-  }
+  useEffect(() => {
+    async function loadFeed() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push('/login')
+        setLoading(false)
+        return
+      }
 
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('last_session_mode')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      if (profile?.last_session_mode !== 'rider' && profile?.last_session_mode !== 'driver') {
+        router.push('/login')
+        setLoading(false)
+        return
+      }
+
+      const postType = profile.last_session_mode === 'rider' ? 'driver' : 'rider'
+      const { data } = await supabase
+        .from('trips')
+        .select('*, profiles:profiles!trips_driver_id_fkey(*), rider_profile:profiles!trips_rider_id_fkey(*)')
+        .eq('is_active', true)
+        .eq('post_type', postType)
+        .order('created_at', { ascending: false })
+
+      setUser(session.user)
+      setTrips(data || [])
+      setLoading(false)
+    }
+
+    void loadFeed()
+  }, [router])
   async function deleteTrip(tripId: string) {
     await supabase.from('trips').update({ is_active: false }).eq('id', tripId)
-    setTrips(prev => prev.filter(t => t.id !== tripId))
+    setTrips(prev => prev.filter(trip => trip.id !== tripId))
     setMenuOpenId(null)
   }
 
@@ -82,35 +109,15 @@ export default function FeedPage() {
       notes: editNotes,
       seats_available: parseInt(editSeats),
     }).eq('id', editingTrip.id)
-    setTrips(prev => prev.map(t => t.id === editingTrip.id ? {
-      ...t, suggested_price: editPrice, notes: editNotes, seats_available: parseInt(editSeats)
-    } : t))
+    setTrips(prev => prev.map(trip => trip.id === editingTrip.id ? {
+      ...trip, suggested_price: editPrice, notes: editNotes, seats_available: parseInt(editSeats)
+    } : trip))
     setEditingTrip(null)
     setMenuOpenId(null)
   }
-
-  async function fetchTrips() {
-    const { data } = await supabase
-      .from('trips')
-      .select('*, profiles:profiles!trips_driver_id_fkey(*), rider_profile:profiles!trips_rider_id_fkey(*)')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-    setTrips(data || [])
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    async function loadFeed() {
-      await checkUser()
-      await fetchTrips()
-    }
-
-    void loadFeed()
-  }, [])
-
   async function signOut() {
     await supabase.auth.signOut()
-    window.location.href = '/login'
+    router.push('/login')
   }
 
   return (

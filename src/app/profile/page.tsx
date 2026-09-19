@@ -31,6 +31,7 @@ export default function ProfilePage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
     const initials = editName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+    const accountRole = editIsDriver ? (profile?.account_role === 'both' ? 'both' : 'driver') : 'rider'
     await supabase.from('profiles').update({
       full_name: editName,
       avatar_initials: initials,
@@ -38,6 +39,8 @@ export default function ProfilePage() {
       car_model: editCarModel,
       car_year: editCarYear,
       is_driver: editIsDriver,
+      account_role: accountRole,
+      last_session_mode: editIsDriver ? profile?.last_session_mode : 'rider',
     }).eq('id', session.user.id)
     setSavingProfile(false)
     setShowEditProfile(false)
@@ -106,7 +109,7 @@ export default function ProfilePage() {
 
       <div style={{ background: '#111', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '0.5px solid #222', position: 'sticky', top: 0, zIndex: 10 }}>
         <span style={{ color: '#e0e0e0', fontSize: '17px', fontWeight: '600', letterSpacing: '1px' }}>Profile</span>
-        <button onClick={signOut} style={{ background: 'none', border: '0.5px solid #333', borderRadius: '99px', padding: '6px 14px', color: '#666', fontSize: '12px', cursor: 'pointer' }}>Sign out</button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}><button onClick={() => router.push('/profile/settings')} aria-label="Open settings" style={{ background: 'none', border: '0.5px solid #333', borderRadius: '50%', width: '30px', height: '30px', color: '#aaa', fontSize: '15px', cursor: 'pointer' }}>⚙</button><button onClick={signOut} style={{ background: 'none', border: '0.5px solid #333', borderRadius: '99px', padding: '6px 14px', color: '#666', fontSize: '12px', cursor: 'pointer' }}>Sign out</button></div>
       </div>
 
       <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px 16px' }}>
