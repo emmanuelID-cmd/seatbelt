@@ -163,16 +163,38 @@ export default function LoginPage() {
     }
 
     setLoading(true)
+    if (sessionMode === 'driver') {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setLoading(false)
+        setError('Sign in is required.')
+        return
+      }
+      const response = await fetch('/api/driver-eligibility', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'activate_driver_mode' }),
+      })
+      const activation = await response.json() as { activated?: boolean; error?: string }
+      setLoading(false)
+      if (!response.ok) {
+        setError(activation.error || 'Driver mode is temporarily unavailable. Please try again later.')
+        return
+      }
+      router.push(activation.activated ? '/feed' : '/verify-identity')
+      return
+    }
+
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({ last_session_mode: sessionMode, session_mode_reassignment_seen: true })
+      .update({ last_session_mode: 'rider', session_mode_reassignment_seen: true })
       .eq('id', sessionUserId)
     setLoading(false)
     if (updateError) {
       setError(updateError.message)
       return
     }
-    router.push(sessionMode === 'driver' ? '/verify-identity' : '/feed')
+    router.push('/feed')
   }
 
   async function handleAuth() {

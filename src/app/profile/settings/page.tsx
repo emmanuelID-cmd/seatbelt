@@ -49,9 +49,31 @@ export default function ProfileSettingsPage() {
 
     setSaving(true)
     setError('')
+    if (mode === 'driver') {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setSaving(false)
+        setError('Sign in is required.')
+        return
+      }
+      const response = await fetch('/api/driver-eligibility', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'activate_driver_mode' }),
+      })
+      const activation = await response.json() as { activated?: boolean; error?: string }
+      setSaving(false)
+      if (!response.ok) {
+        setError(activation.error || 'Driver mode is temporarily unavailable. Please try again later.')
+        return
+      }
+      router.push(activation.activated ? '/feed' : '/verify-identity')
+      return
+    }
+
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({ last_session_mode: mode })
+      .update({ last_session_mode: 'rider' })
       .eq('id', profile.id)
     setSaving(false)
 
@@ -60,7 +82,7 @@ export default function ProfileSettingsPage() {
       return
     }
 
-    router.push(mode === 'driver' ? '/verify-identity' : '/feed')
+    router.push('/feed')
   }
 
   if (loading) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#111', color: '#777' }}>Loading settings...</div>

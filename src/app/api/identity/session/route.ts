@@ -51,13 +51,15 @@ export async function POST(request: NextRequest) {
     const stripe = getStripe()
     if (existing?.stripe_verification_session_id && existing.status !== 'canceled') {
       const session = await stripe.identity.verificationSessions.retrieve(existing.stripe_verification_session_id)
-      if (session.status === 'verified') return responseForStatus('verified')
-      if (session.status === 'processing') return responseForStatus('processing')
-      if (session.client_secret) return responseForStatus('requires_input', session.client_secret)
+      const requiresDriverLicense = session.options?.document?.allowed_types?.includes('driving_license')
+      if (requiresDriverLicense && session.status === 'verified') return responseForStatus('verified')
+      if (requiresDriverLicense && session.status === 'processing') return responseForStatus('processing')
+      if (requiresDriverLicense && session.client_secret) return responseForStatus('requires_input', session.client_secret)
     }
 
     const session = await stripe.identity.verificationSessions.create({
       type: 'document',
+      options: { document: { allowed_types: ['driving_license'] } },
       provided_details: { email: user.email || undefined },
       metadata: { user_id: user.id },
     })
