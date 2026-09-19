@@ -44,3 +44,8 @@ docs/source-policy/word/
 
 docs/DECISIONS-AND-FOLLOW-UP.md
 .env.local
+.vercel
+.env*
+
+# Keep the safe variable-name template in Git.
+!.env.example
