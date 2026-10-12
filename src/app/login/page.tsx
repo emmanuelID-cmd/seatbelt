@@ -5,6 +5,8 @@ import { supabase, type Profile } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import FieldHelp from '@/components/FieldHelp'
 import { sanitizeFullName, sanitizePassword, validateEmail, validateFullName, validatePassword } from '@/lib/inputValidation'
+import {apiRequest} from '@/lib/apiClient'
+import type {AccountData} from '@/lib/accountTypes'
 
 type AccountRole = '' | 'rider' | 'driver' | 'both'
 type SessionMode = 'rider' | 'driver'
@@ -139,10 +141,29 @@ export default function LoginPage() {
 
   async function openSessionChoice(userId: string, newProfile?: Profile) {
     setLoading(true)
+    try {
+      const account=await apiRequest<AccountData>('/api/account')
+      if(account.preferences.account_state!=='active'){setLoading(false);router.push('/profile/settings/account');return}
+      if(newProfile){
+        const {error}=await supabase.from('profiles').update({last_session_mode:'rider'}).eq('id',userId)
+        if(error)throw error
+        setLoading(false)
+        router.replace('/feed')
+        return
+      }
+    }catch{setLoading(false);setError('Account setup is temporarily unavailable. Please try again.');return}
     const profile = newProfile || (await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()).data as Profile | null
-    setLoading(false)
     if (!profile) {
+      setLoading(false)
       setError('Your account profile could not be loaded. Please try again.')
+      return
+    }
+
+    if(!profile.last_session_mode&&profile.session_mode_reassignment_seen){
+      const {error}=await supabase.from('profiles').update({last_session_mode:'rider'}).eq('id',userId)
+      setLoading(false)
+      if(error){setError('Your account is ready, but this session could not start. Please try again.');return}
+      router.replace('/feed')
       return
     }
 
@@ -175,13 +196,13 @@ export default function LoginPage() {
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'activate_driver_mode' }),
       })
-      const activation = await response.json() as { activated?: boolean; error?: string }
+      const activation = await response.json() as { activated?: boolean; identityStatus?: string; driverLicenseStatus?: string; driverLicenseExpiresOn?: string | null; error?: string }
       setLoading(false)
       if (!response.ok) {
         setError(activation.error || 'Driver mode is temporarily unavailable. Please try again later.')
         return
       }
-      router.push(activation.activated ? '/feed' : '/verify-identity')
+      router.push(activation.activated ? '/feed' : activation.identityStatus !== 'verified' ? '/verify-identity' : activation.driverLicenseStatus !== 'verified' || !activation.driverLicenseExpiresOn ? '/verify-identity?purpose=driver_license' : '/driver-eligibility')
       return
     }
 
@@ -228,7 +249,7 @@ export default function LoginPage() {
       if (signUpError || !data.user) { setError(signUpError?.message || 'Account creation did not complete.'); setLoading(false); return }
 
       if (!data.session) {
-        setError('Account created. Confirm your email, then sign in to choose how this session starts.')
+        setError('Account created. Confirm your email, then sign in to continue to the home feed.')
         setLoading(false)
         setIsSignUp(false)
         return

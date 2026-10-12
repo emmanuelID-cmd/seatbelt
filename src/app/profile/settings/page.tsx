@@ -2,118 +2,84 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase, type Profile } from '@/lib/supabase'
-
-type SessionMode = 'rider' | 'driver'
+import AccountPage, { Feedback, SettingsLink } from '@/components/AccountPage'
+import { apiRequest } from '@/lib/apiClient'
+import { supabase } from '@/lib/supabase'
+import { ResourceState, SignOutButton, requestError, useAccount } from './_components'
 
 export default function ProfileSettingsPage() {
   const router = useRouter()
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [mode, setMode] = useState<SessionMode>('rider')
-  const [loading, setLoading] = useState(true)
+  const account = useAccount()
+  const [mode, setMode] = useState<'rider' | 'driver' | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
-
+  const [adminError, setAdminError] = useState('')
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) {
-        router.push('/login')
-        return
+    const controller = new AbortController()
+    void supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return
+      const result = await fetch('/api/admin/security', { headers: { Authorization: `Bearer ${session.access_token}` }, signal: controller.signal })
+      if (!controller.signal.aborted) {
+        setIsAdmin(result.ok)
+        if (!result.ok && result.status !== 403 && result.status !== 401) setAdminError('Administrator access could not be checked. Reload to try again.')
       }
-
-      const { data, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .maybeSingle()
-
-      if (profileError || !data) {
-        setError(profileError?.message || 'Your profile could not be loaded.')
-        setLoading(false)
-        return
-      }
-
-      const loadedProfile = data as Profile
-      setProfile(loadedProfile)
-      setMode(loadedProfile.last_session_mode === 'driver' && loadedProfile.is_driver ? 'driver' : 'rider')
-
-      const adminResponse = await fetch('/api/admin/security', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-      setIsAdmin(adminResponse.ok)
-      setLoading(false)
-    })
-  }, [router])
-
+    }).catch(() => { if (!controller.signal.aborted) setAdminError('Administrator access could not be checked. Reload to try again.') })
+    return () => controller.abort()
+  }, [])
+  const profile = account.data?.profile
+  const chosenMode = mode ?? (profile?.is_driver && profile.last_session_mode === 'driver' ? 'driver' : 'rider')
   async function saveMode() {
     if (!profile) return
-    if (mode === 'driver' && !profile.is_driver) {
-      setError('Driver mode is not enabled for this account.')
-      return
-    }
-
-    setSaving(true)
     setError('')
-    if (mode === 'driver') {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        setSaving(false)
-        setError('Sign in is required.')
-        return
+    if (chosenMode === 'driver' && !profile.is_driver) { setError('Driver mode is not enabled for this account.'); return }
+    setSaving(true)
+    try {
+      if (chosenMode === 'driver') {
+        const result = await apiRequest<{ activated?: boolean; identityStatus?: string; driverLicenseStatus?: string; driverLicenseExpiresOn?: string | null }>('/api/driver-eligibility', { method: 'POST', body: JSON.stringify({ action: 'activate_driver_mode' }) })
+        router.push(result.activated ? '/feed' : result.identityStatus !== 'verified' ? '/verify-identity' : result.driverLicenseStatus !== 'verified' || !result.driverLicenseExpiresOn ? '/verify-identity?purpose=driver_license' : '/driver-eligibility')
+      } else {
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError || !user || user.id !== profile.id) throw new Error('Sign in again to change session mode.')
+        const { error: updateError } = await supabase.from('profiles').update({ last_session_mode: 'rider' }).eq('id', user.id)
+        if (updateError) throw new Error('Session mode could not be saved. Please try again.')
+        router.push('/feed')
       }
-      const response = await fetch('/api/driver-eligibility', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'activate_driver_mode' }),
-      })
-      const activation = await response.json() as { activated?: boolean; error?: string }
-      setSaving(false)
-      if (!response.ok) {
-        setError(activation.error || 'Driver mode is temporarily unavailable. Please try again later.')
-        return
-      }
-      router.push(activation.activated ? '/feed' : '/verify-identity')
-      return
-    }
-
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ last_session_mode: 'rider' })
-      .eq('id', profile.id)
-    setSaving(false)
-
-    if (updateError) {
-      setError(updateError.message)
-      return
-    }
-
-    router.push('/feed')
+    } catch (cause) { setError(requestError(cause)) }
+    finally { setSaving(false) }
   }
-
-  if (loading) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#111', color: '#777' }}>Loading settings...</div>
-
-  return (
-    <main style={{ minHeight: '100vh', background: '#111', color: '#e0e0e0', padding: '16px' }}>
-      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-        <header style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-          <button type="button" onClick={() => router.push('/profile')} aria-label="Back to profile" style={{ background: 'none', border: 'none', color: '#aaa', fontSize: '22px', cursor: 'pointer' }}>←</button>
-          <h1 style={{ margin: 0, fontSize: '18px' }}>Settings</h1>
-        </header>
-        <section style={{ background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '16px', padding: '20px' }}>
-          <h2 style={{ margin: '0 0 8px', fontSize: '16px' }}>Session mode</h2>
-          <p style={{ margin: '0 0 18px', color: '#888', fontSize: '13px', lineHeight: 1.5 }}>Choose which side of Seatbelt you want to use right now. You will choose again whenever you sign in.</p>
-          {error && <p role="alert" style={{ color: '#f87171', fontSize: '13px' }}>{error}</p>}
-          <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-            <legend style={{ color: '#777', fontSize: '11px', letterSpacing: '0.5px' }}>USE SEATBELT AS</legend>
-            <label style={{ display: 'flex', gap: '10px', padding: '12px 0', cursor: 'pointer' }}><input type="radio" name="settings-mode" checked={mode === 'rider'} onChange={() => setMode('rider')} /> Rider</label>
-            <label style={{ display: 'flex', gap: '10px', padding: '12px 0', cursor: profile?.is_driver ? 'pointer' : 'not-allowed', color: profile?.is_driver ? '#e0e0e0' : '#666' }}><input type="radio" name="settings-mode" disabled={!profile?.is_driver} checked={mode === 'driver'} onChange={() => setMode('driver')} /> Driver {!profile?.is_driver && '(not enabled for this account)'}</label>
-          </fieldset>
-          <button type="button" onClick={() => void saveMode()} disabled={saving} style={{ width: '100%', marginTop: '12px', border: 0, borderRadius: '10px', padding: '13px', background: '#c8b86a', color: '#111', fontWeight: '700', cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>{saving ? 'SAVING...' : 'SAVE SESSION MODE'}</button>
-          {isAdmin && <button type="button" onClick={() => router.push('/admin/security')} style={{ width: '100%', marginTop: '12px', border: '0.5px solid #555', borderRadius: '10px', padding: '13px', background: 'transparent', color: '#e0e0e0', fontWeight: '700', cursor: 'pointer' }}>ADMINISTRATOR SECURITY</button>}
-          {isAdmin && <button type="button" onClick={() => router.push('/admin/driver-eligibility')} style={{ width: '100%', marginTop: '12px', border: '0.5px solid #555', borderRadius: '10px', padding: '13px', background: 'transparent', color: '#e0e0e0', fontWeight: '700', cursor: 'pointer' }}>DRIVER ELIGIBILITY REVIEW</button>}
-        </section>
-      </div>
-    </main>
-  )
+  return <AccountPage title="Settings" back="/profile">
+    <nav aria-label="Account settings" className="panel">
+      <SettingsLink href="/profile/settings/account" title="Account" description="Personal details, identification and account status" />
+      <SettingsLink href="/profile/settings/security" title="Privacy & Security" description="Change password and manage privacy" />
+      <SettingsLink href="/profile/settings/notifications" title="Notifications" description="Message channels and updates" />
+      <SettingsLink href="/profile/settings/payment" title="Payment" description="Payment methods and Driver payouts" />
+      <SettingsLink href="/profile/settings/subscription" title="Subscription & billing" description="View your actual plan and billing status" />
+      <SettingsLink href="/profile/settings/ride-history" title="Ride History" description="Your private ride agreements and reviews" />
+      <SettingsLink href="/profile/settings/travel-history" title="Travel History" description="Your completed travel records" />
+      <SettingsLink href="/profile/settings/support" title="Support" description="Questions, payment issues and appeals" />
+      <SettingsLink href="/profile/settings/privacy" title="Privacy & data" description="Location sharing, export and account deletion requests" />
+      <SettingsLink href="/profile/settings/guidance" title="Guidance" description="FAQs, DOs / DON'Ts and General Information" />
+      <SettingsLink href="/profile/settings/data-usage" title="Data Usage" description="Data processing and privacy controls" />
+    </nav>
+    <ResourceState loading={account.loading} error={account.error} retry={account.refresh}>
+      {profile && <form className="panel" noValidate onSubmit={event => { event.preventDefault(); void saveMode() }}>
+        <h2>Session mode</h2><Feedback error={error} />
+        <p className="muted">Choose how to use Seatbelt now. You will choose again when signing in.</p>
+        <fieldset disabled={saving}><legend>Use Seatbelt as</legend>
+          <label className="form-field"><input type="radio" name="mode" checked={chosenMode === 'rider'} onChange={() => setMode('rider')} /> Rider</label>
+          <label className="form-field"><input type="radio" name="mode" disabled={!profile.is_driver} checked={chosenMode === 'driver'} onChange={() => setMode('driver')} /> Driver{!profile.is_driver && ' (not enabled for this account)'}</label>
+        </fieldset>
+        <button className="primary-button" disabled={saving}>{saving ? 'Saving…' : 'Save session mode'}</button>
+      </form>}
+      <Feedback error={adminError} />
+      {isAdmin && <nav className="panel" aria-label="Administrator tools">
+        <SettingsLink href="/admin/security" title="Administrator security" />
+        <SettingsLink href="/admin/driver-eligibility" title="Driver eligibility review" />
+        <SettingsLink href="/admin/analytics" title="Analytics" />
+        <SettingsLink href="/admin/support" title="Support requests" />
+      </nav>}
+    </ResourceState>
+    <SignOutButton />
+  </AccountPage>
 }
