@@ -4,6 +4,15 @@ import { createServiceRoleClient, requireAal2Admin } from '@/lib/supabaseServer'
 const documentTypes = ['registration', 'insurance'] as const
 const actions = ['approved', 'rejected', 'needs_update'] as const
 const reasonCodes = ['missing_document', 'expired_document', 'unreadable_document', 'unsupported_document', 'information_mismatch', 'manual_review_required'] as const
+const DEFAULT_DOCUMENT_RETENTION_DAYS = 30
+
+function documentDeleteAfter(reviewedAt: Date) {
+  const configuredDays = Number(process.env.DRIVER_ELIGIBILITY_DOCUMENT_RETENTION_DAYS || DEFAULT_DOCUMENT_RETENTION_DAYS)
+  const retentionDays = Number.isInteger(configuredDays) && configuredDays >= 1 && configuredDays <= 365
+    ? configuredDays
+    : DEFAULT_DOCUMENT_RETENTION_DAYS
+  return new Date(reviewedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000).toISOString()
+}
 
 type DocumentType = typeof documentTypes[number]
 type ReviewAction = typeof actions[number]
@@ -79,30 +88,28 @@ export async function POST(request: NextRequest) {
     }
 
     const client = createServiceRoleClient()
-    const { data: current, error: lookupError } = await client
-      .from('driver_eligibility')
-      .select('registration_status, insurance_status')
-      .eq('user_id', body.subjectUserId)
-      .maybeSingle()
-    if (lookupError) throw lookupError
-    if (!current) return NextResponse.json({ error: 'Eligibility submission was not found.' }, { status: 404 })
-
-    const status = body.action === 'approved' ? 'approved' : 'rejected'
-    const otherStatus = body.documentType === 'registration' ? current.insurance_status : current.registration_status
-    const overallStatus = status === 'approved' && otherStatus === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'pending'
-    const update = body.documentType === 'registration'
-      ? { registration_status: status, registration_rejection_code: body.action === 'approved' ? null : body.reasonCode, overall_status: overallStatus }
-      : { insurance_status: status, insurance_rejection_code: body.action === 'approved' ? null : body.reasonCode, overall_status: overallStatus }
-    const { error: updateError } = await client.from('driver_eligibility').update(update).eq('user_id', body.subjectUserId)
-    if (updateError) throw updateError
-
-    const { error: auditError } = await client.from('driver_eligibility_review_audit').insert({
-      subject_user_id: body.subjectUserId,
-      reviewer_user_id: admin.user.id,
-      action: body.action,
-      reason_code: body.action === 'approved' ? null : body.reasonCode,
+    const reviewedAt = new Date()
+    const deleteAfter = documentDeleteAfter(reviewedAt)
+    const { data: overallStatus, error: reviewError } = await client.rpc('review_driver_eligibility_document', {
+      p_subject_user_id: body.subjectUserId,
+      p_reviewer_user_id: admin.user.id,
+      p_document_type: body.documentType,
+      p_action: body.action,
+      p_reason_code: body.action === 'approved' ? null : body.reasonCode,
+      p_delete_after: deleteAfter,
     })
-    if (auditError) throw auditError
+    if (reviewError?.code === 'P0002') return NextResponse.json({ error: 'Eligibility submission was not found.' }, { status: 404 })
+    if (reviewError) throw reviewError
+
+    const { error: notificationError } = await client.from('driver_eligibility_notification_events').insert({
+      user_id: body.subjectUserId,
+      event_type: body.action,
+      document_type: body.documentType,
+      dedupe_key: body.subjectUserId + ':' + body.documentType + ':' + body.action + ':' + reviewedAt.toISOString(),
+    })
+    if (notificationError) {
+      console.error('Driver Eligibility notification event failed', { message: notificationError.message })
+    }
 
     return NextResponse.json({ saved: true, overallStatus })
   } catch (error) {

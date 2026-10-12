@@ -18,6 +18,7 @@ type Eligibility = {
 
 type EligibilityResponse = {
   identityStatus: string
+  driverLicense: { status: string; expiresOn: string | null; expiryConfigured: boolean }
   eligibility: Eligibility | null
   error?: string
 }
@@ -66,6 +67,7 @@ export default function DriverEligibilityPage() {
   const router = useRouter()
   const [eligibility, setEligibility] = useState<Eligibility | null>(null)
   const [identityStatus, setIdentityStatus] = useState('not_started')
+  const [driverLicense, setDriverLicense] = useState<EligibilityResponse['driverLicense']>({ status: 'not_started', expiresOn: null, expiryConfigured: false })
   const [registrationExpiry, setRegistrationExpiry] = useState('')
   const [insuranceExpiry, setInsuranceExpiry] = useState('')
   const [registrationFile, setRegistrationFile] = useState<File | null>(null)
@@ -98,6 +100,7 @@ export default function DriverEligibilityPage() {
       const data = await authorizedRequest()
       setEligibility(data.eligibility)
       setIdentityStatus(data.identityStatus)
+      setDriverLicense(data.driverLicense)
       setRegistrationExpiry(data.eligibility?.registration.expiresOn || '')
       setInsuranceExpiry(data.eligibility?.insurance.expiresOn || '')
     } catch (requestError) {
@@ -223,6 +226,11 @@ export default function DriverEligibilityPage() {
             </div>
           )}
           <p role="status" style={{ color: statusColor(identityStatus), fontSize: '13px' }}>Identity verification: {statusLabel(identityStatus)}</p>
+          <p role="status" style={{ color: statusColor(driverLicense.status), fontSize: '13px' }}>Driver License verification: {statusLabel(driverLicense.status)}{driverLicense.expiresOn ? ` (expires ${driverLicense.expiresOn})` : ''}</p>
+          {driverLicense.status === 'verified' && !driverLicense.expiresOn && <p className="muted">Driver License expiration cannot yet be confirmed. Stripe Identity Results access must be configured before Driver mode can be enabled.</p>}
+          {identityStatus !== 'verified' && <p><a href="/verify-identity">Verify identity securely with Stripe</a></p>}
+          <p><a href="/verify-identity?purpose=driver_license">Verify Driver License</a></p>
+          <p><a href="/verify-identity?context=driver-eligibility">Additional Driver Eligibility identity options</a> (U.S. ID-number checks stay inside Stripe.)</p>
           <p role="status" style={{ color: statusColor(eligibility?.overallStatus || 'incomplete'), fontSize: '13px', marginBottom: '20px' }}>Driver Eligibility: {statusLabel(eligibility?.overallStatus || 'incomplete')}</p>
           {eligibility?.registration.rejectionCode && <p role="status" style={{ color: '#f87171', fontSize: '12px' }}>Registration review: {statusLabel(eligibility.registration.rejectionCode)}. Please upload an updated document.</p>}
           {eligibility?.insurance.rejectionCode && <p role="status" style={{ color: '#f87171', fontSize: '12px', marginBottom: '20px' }}>Insurance review: {statusLabel(eligibility.insurance.rejectionCode)}. Please upload an updated document.</p>}

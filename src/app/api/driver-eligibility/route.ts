@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServiceRoleClient, getAuthenticatedUser } from '@/lib/supabaseServer'
+import {ensureAccount} from '@/lib/platformServer'
+import { getVerifiedDriverLicenseExpiry, identityResultsConfigured } from '@/lib/stripeIdentity'
 
 const BUCKET = 'driver-eligibility-documents'
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -47,9 +49,14 @@ function responseForEligibility(eligibility: {
   insurance_submitted_at: string | null
   insurance_rejection_code: string | null
   overall_status: string
-} | null, identityStatus: string | null) {
+} | null, identityStatus: string | null, driverLicense: { status: string; license_expires_on: string | null } | null) {
   return NextResponse.json({
     identityStatus: identityStatus || 'not_started',
+    driverLicense: {
+      status: driverLicense?.status || 'not_started',
+      expiresOn: driverLicense?.license_expires_on || null,
+      expiryConfigured: identityResultsConfigured(),
+    },
     eligibility: eligibility && {
       overallStatus: eligibility.overall_status,
       registration: {
@@ -82,10 +89,10 @@ async function requireDriverAccount(userId: string) {
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(request)
-    if (!user) return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 })
+    if (!user || user.is_anonymous) return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 })
 
     const serviceClient = createServiceRoleClient()
-    const [{ data: eligibility, error: eligibilityError }, { data: identity, error: identityError }] = await Promise.all([
+    const [{ data: eligibility, error: eligibilityError }, { data: identity, error: identityError }, { data: driverLicense, error: licenseError }] = await Promise.all([
       serviceClient
         .from('driver_eligibility')
         .select('registration_status, registration_expires_on, registration_submitted_at, registration_rejection_code, insurance_status, insurance_expires_on, insurance_submitted_at, insurance_rejection_code, overall_status')
@@ -96,11 +103,23 @@ export async function GET(request: NextRequest) {
         .select('status')
         .eq('user_id', user.id)
         .maybeSingle(),
+      serviceClient.from('driver_license_verifications')
+        .select('status,stripe_verification_session_id,license_expires_on')
+        .eq('user_id', user.id).maybeSingle(),
     ])
     if (eligibilityError) throw eligibilityError
     if (identityError) throw identityError
+    if (licenseError) throw licenseError
 
-    return responseForEligibility(eligibility, identity?.status || null)
+    let licenseExpiry = driverLicense?.license_expires_on || null
+    if (driverLicense?.status === 'verified' && !licenseExpiry && driverLicense.stripe_verification_session_id) {
+      try {
+        licenseExpiry = await getVerifiedDriverLicenseExpiry(driverLicense.stripe_verification_session_id)
+        if (licenseExpiry) await serviceClient.from('driver_license_verifications').update({ license_expires_on: licenseExpiry, updated_at: new Date().toISOString() }).eq('user_id', user.id)
+      } catch { /* Missing restricted results access remains an honest pending eligibility state. */ }
+    }
+
+    return responseForEligibility(eligibility, identity?.status || null, driverLicense ? { status: driverLicense.status, license_expires_on: licenseExpiry } : null)
   } catch (error) {
     console.error('Driver eligibility GET failed', {
       message: error instanceof Error ? error.message : 'Unknown server error',
@@ -112,23 +131,45 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(request)
-    if (!user) return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 })
+    if (!user || user.is_anonymous) return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 })
     if (!(await requireDriverAccount(user.id))) {
       return NextResponse.json({ error: 'Driver eligibility is only available for Driver accounts.' }, { status: 403 })
     }
+
+    const accountClient=await ensureAccount(user.id)
+    const {data:account,error:accountError}=await accountClient.from('account_preferences').select('account_state').eq('user_id',user.id).single()
+    if(accountError) throw accountError
+    if(account.account_state!=='active') return NextResponse.json({error:'Your account must be active before changing Driver eligibility or session mode.'},{status:403})
 
     const body = await request.json() as UploadRequest
     const serviceClient = createServiceRoleClient()
 
     if (body.action === 'activate_driver_mode') {
-      const [{ data: identity, error: identityError }, { data: eligibility, error: eligibilityError }] = await Promise.all([
+      const {data:details,error:detailsError}=await serviceClient.from('account_details').select('legal_name,address_line1,city,postal_code,date_of_birth').eq('user_id',user.id).single()
+      if(detailsError) throw detailsError
+      if(!details.legal_name||!details.address_line1||!details.city||!details.postal_code||!details.date_of_birth) return NextResponse.json({error:'Complete your private Account details before choosing Driver mode.'},{status:409})
+      const [{ data: identity, error: identityError }, { data: license, error: licenseError }, { data: eligibility, error: eligibilityError }] = await Promise.all([
         serviceClient.from('identity_verifications').select('status').eq('user_id', user.id).maybeSingle(),
-        serviceClient.from('driver_eligibility').select('overall_status').eq('user_id', user.id).maybeSingle(),
+        serviceClient.from('driver_license_verifications').select('status,stripe_verification_session_id,license_expires_on').eq('user_id', user.id).maybeSingle(),
+        serviceClient.from('driver_eligibility').select('overall_status,registration_status,insurance_status,registration_expires_on,insurance_expires_on').eq('user_id', user.id).maybeSingle(),
       ])
       if (identityError) throw identityError
+      if (licenseError) throw licenseError
       if (eligibilityError) throw eligibilityError
 
-      const activated = identity?.status === 'verified' && eligibility?.overall_status === 'approved'
+      let licenseExpiresOn = license?.license_expires_on || null
+      if (license?.status === 'verified' && !licenseExpiresOn && license.stripe_verification_session_id) {
+        try {
+          licenseExpiresOn = await getVerifiedDriverLicenseExpiry(license.stripe_verification_session_id)
+          if (licenseExpiresOn) await serviceClient.from('driver_license_verifications').update({ license_expires_on: licenseExpiresOn, updated_at: new Date().toISOString() }).eq('user_id', user.id)
+        } catch { /* Missing restricted results access keeps Driver mode unavailable. */ }
+      }
+
+      const today=new Date().toISOString().slice(0,10)
+      const activated = identity?.status === 'verified' && license?.status === 'verified' && Boolean(licenseExpiresOn && licenseExpiresOn >= today) && eligibility?.overall_status === 'approved'
+        && eligibility.registration_status==='approved' && eligibility.insurance_status==='approved'
+        && Boolean(eligibility.registration_expires_on&&eligibility.registration_expires_on>=today)
+        && Boolean(eligibility.insurance_expires_on&&eligibility.insurance_expires_on>=today)
       const { error: profileError } = await serviceClient
         .from('profiles')
         .update({ last_session_mode: activated ? 'driver' : 'rider', session_mode_reassignment_seen: true })
@@ -138,6 +179,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         activated,
         identityStatus: identity?.status || 'not_started',
+        driverLicenseStatus: license?.status || 'not_started',
+        driverLicenseExpiresOn: licenseExpiresOn,
         eligibilityStatus: eligibility?.overall_status || 'incomplete',
       })
     }
