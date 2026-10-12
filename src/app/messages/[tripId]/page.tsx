@@ -1,462 +1,67 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
-import { supabase, Message } from '@/lib/supabase'
-import type { Profile, Trip } from '@/lib/supabase'
-import type { User } from '@supabase/supabase-js'
-import { useRouter, useParams } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import AccountPage, { Feedback } from '@/components/AccountPage'
+import { ErrorSummary, FieldError, invalidProps, ResourceState, requestError, useResource } from '@/app/profile/settings/_components'
 import PaymentModal from '@/app/components/PaymentModal'
 import FieldHelp from '@/components/FieldHelp'
+import { apiRequest } from '@/lib/apiClient'
 import { validateMessage } from '@/lib/inputValidation'
+import { money, offerCents, type Conversation } from '@/lib/rides'
 
-export default function MessagesPage() {
-  const router = useRouter()
-  const params = useParams()
-  const tripId = params.tripId as string
-  const [messages, setMessages] = useState<Message[]>([])
-  const [newMessage, setNewMessage] = useState('')
-  const [messageError, setMessageError] = useState('')
-  const [currentUser, setCurrentUser] = useState<User | null>(null)
-
-  const [trip, setTrip] = useState<Trip | null>(null)
-  const [otherProfile, setOtherProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [showPayment, setShowPayment] = useState(false)
-  const [paymentAmount, setPaymentAmount] = useState(0)
-  const [paymentDriverId, setPaymentDriverId] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
-
-  async function loadData() {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { router.push('/login'); return }
-    setCurrentUser(session.user)
-
-
-    // Get trip with driver profile
-    const { data: tripData } = await supabase
-      .from('trips').select('*, profiles:profiles!trips_driver_id_fkey(*), rider_profile:profiles!trips_rider_id_fkey(*)').eq('id', tripId).single()
-    setTrip(tripData)
-
-    // Get the other participant based on the post owner.
-    const isDriverPost = tripData?.post_type === 'driver'
-    const ownerId = isDriverPost ? tripData?.driver_id : tripData?.rider_id
-    let counterpartId = ownerId
-
-    if (ownerId === session.user.id) {
-      const { data: firstMsg } = await supabase
-        .from('messages')
-        .select('sender_id')
-        .eq('trip_id', tripId)
-        .neq('sender_id', session.user.id)
-        .limit(1)
-        .single()
-
-      counterpartId = firstMsg?.sender_id || null
-    }
-
-    if (counterpartId) {
-      const { data: otherProf } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', counterpartId)
-        .single()
-
-      setOtherProfile(otherProf)
-    }
-
-    // Get messages
-    const { data: msgs } = await supabase
-      .from('messages').select('*')
-      .eq('trip_id', tripId)
-      .order('created_at', { ascending: true })
-    setMessages(msgs || [])
-    setLoading(false)
+export default function MessagesPage() { return <Suspense fallback={<p role="status">Loading…</p>}><ConversationPage /></Suspense> }
+function ConversationPage() {
+  const { tripId } = useParams<{ tripId: string }>()
+  const other = useSearchParams().get('with')
+  const [page, setPage] = useState(0)
+  const resource = useResource<Conversation & { hasMore: boolean }>(`/api/rides/conversations/${encodeURIComponent(tripId)}?page=${page}${other ? `&with=${encodeURIComponent(other)}` : ''}`)
+  const [message, setMessage] = useState('')
+  const [amount, setAmount] = useState('')
+  const [attempted, setAttempted] = useState<'message' | 'offer' | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [pay, setPay] = useState(false)
+  const messageError = validateMessage(message)
+  const cents = offerCents(amount)
+  const errors: Record<string, string> = attempted === 'message' && messageError ? { message: messageError } : attempted === 'offer' && cents === null ? { amount: 'Enter a Wager Price of $1.00–$999.00 with up to two decimal places.' } : {}
+  async function perform(path: string, payload: object, method = 'POST', completed = 'Saved.') {
+    setBusy(true); setError(''); setSuccess('')
+    try { await apiRequest(path, { method, body: JSON.stringify(payload) }); setSuccess(completed); await resource.refresh(); return true }
+    catch (cause) { setError(requestError(cause)); return false } finally { setBusy(false) }
   }
-
-  useEffect(() => {
-    async function loadMessages() {
-      await loadData()
-    }
-
-    void loadMessages()
-  }, [tripId])
-  useEffect(() => {
-    if (!tripId) return
-    const channel = supabase
-      .channel(`messages-${tripId}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'messages',
-        filter: `trip_id=eq.${tripId}`
-      }, (payload) => {
-        setMessages(prev => [...prev, payload.new as Message])
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [tripId])
-
-  async function sendMessage() {
-    const validationError = validateMessage(newMessage)
-    if (validationError) {
-      setMessageError(validationError)
-      return
-    }
-    if (!currentUser || !trip) return
-
-    const content = newMessage.trim()
-
-    const ownerId = trip.post_type === 'driver' ? trip.driver_id : trip.rider_id
-    let receiverId = ownerId
-
-    if (ownerId === currentUser.id) {
-      const otherMessage = messages.find(message => message.sender_id !== currentUser.id)
-      receiverId = otherMessage?.sender_id || null
-    }
-
-    if (!receiverId || receiverId === currentUser.id) {
-      setMessageError('A conversation participant is not available yet.')
-      return
-    }
-
-    const { error } = await supabase.from('messages').insert({
-      trip_id: tripId,
-      sender_id: currentUser.id,
-      receiver_id: receiverId,
-      content,
-    })
-
-    if (error) {
-      setMessageError(error.message)
-      return
-    }
-
-    setNewMessage('')
-    setMessageError('')
+  async function send(event: React.FormEvent) {
+    event.preventDefault(); setAttempted('message')
+    if (messageError || !resource.data) return
+    if (await perform(`/api/rides/conversations/${tripId}`, { other_id: resource.data.other.id, content: message }, 'POST', 'Message sent.')) { setMessage(''); setAttempted(null) }
   }
-
-  function formatTime(timestamp: string) {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  async function offer(event: React.FormEvent) {
+    event.preventDefault(); setAttempted('offer')
+    if (cents === null || !resource.data) return
+    if (await perform('/api/rides/offers', { trip_id: tripId, other_id: resource.data.other.id, amount_cents: cents }, 'POST', 'Offer sent. The Rider can accept it.')) setAttempted(null)
   }
-
-  const getSenderName = (msg: Message) => {
-    if (msg.sender_id === currentUser?.id) return 'You'
-    return otherProfile?.full_name || 'User'
-  }
-
-  const isDriverParticipant = Boolean(
-    currentUser &&
-    trip &&
-    (
-      (trip.post_type === 'driver' && currentUser.id === trip.driver_id) ||
-      (trip.post_type === 'rider' && currentUser.id !== trip.rider_id)
-    )
-  )
-
-  const isRiderParticipant = Boolean(
-    currentUser &&
-    trip &&
-    (
-      (trip.post_type === 'driver' && currentUser.id !== trip.driver_id) ||
-      (trip.post_type === 'rider' && currentUser.id === trip.rider_id)
-    )
-  )
-
-  const latestOffer = [...messages]
-    .reverse()
-    .find(message => message.content.startsWith('PRICE_OFFER:'))
-
-  const latestOfferAmount = latestOffer
-    ? Number(latestOffer.content.split(':')[1])
-    : 0
-
-  return (
-    <div style={{ height: '100vh', background: '#111', display: 'flex', flexDirection: 'column' }}>
-
-      {/* Header */}
-      <div style={{ background: '#111', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '0.5px solid #222', flexShrink: 0 }}>
-        <button onClick={() => router.push('/dms')} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: '22px' }}>←</button>
-        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#2a2a2a', border: '0.5px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600', color: '#aaa', flexShrink: 0 }}>
-          {otherProfile?.avatar_initials || '??'}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: '500' }}>{otherProfile?.full_name || 'User'}</div>
-          <div style={{ color: '#444', fontSize: '11px' }}>{trip?.origin} → {trip?.destination} · {trip?.departure_time}</div>
-        </div>
-        <div style={{ background: '#1a2a1a', color: '#6dba6d', fontSize: '11px', fontWeight: '600', padding: '4px 10px', borderRadius: '99px' }}>
-          {trip?.suggested_price || 'Open'}
-        </div>
-      </div>
-
-      {/* Trip card */}
-      {trip && (
-        <div style={{ margin: '12px 16px', background: '#1a1a1a', borderRadius: '12px', padding: '12px', border: '0.5px solid #2a2a2a', flexShrink: 0 }}>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-              <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#7ab3d4' }}></div>
-              <div style={{ width: '1px', height: '14px', background: '#333' }}></div>
-              <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#c47a5a' }}></div>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: '#e0e0e0', fontSize: '13px', fontWeight: '500' }}>{trip.origin}</div>
-              <div style={{ color: '#555', fontSize: '12px', marginTop: '4px' }}>{trip.destination}</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ color: '#c8b86a', fontSize: '16px', fontWeight: '600' }}>{trip.suggested_price || 'Open'}</div>
-              <div style={{ color: '#444', fontSize: '11px' }}>{trip.departure_time}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {loading && <div style={{ textAlign: 'center', color: '#444', fontSize: '13px' }}>Loading...</div>}
-        {!loading && messages.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <div style={{ fontSize: '32px', marginBottom: '12px' }}>💬</div>
-            <p style={{ color: '#aaa', fontSize: '14px', marginBottom: '6px' }}>Start the conversation</p>
-            <p style={{ color: '#444', fontSize: '12px' }}>Negotiate a price and arrange your pickup</p>
-          </div>
-        )}
-        {messages.map((msg, i) => {
-          const isMe = msg.sender_id === currentUser?.id
-          const isPriceRequest = msg.content.startsWith('PRICE_REQUEST:')
-          const requestedPrice = isPriceRequest ? parseFloat(msg.content.split(':')[1]) : 0
-          const isDriver = isDriverParticipant
-
-          const isPriceOffer = msg.content.startsWith('PRICE_OFFER:')
-          const offerAmount = isPriceOffer ? parseFloat(msg.content.split(':')[1]) : 0
-          const isPriceAccepted = msg.content.startsWith('PRICE_ACCEPTED:')
-          const acceptedAmount = isPriceAccepted ? parseFloat(msg.content.split(':')[1]) : 0
-
-          if (isPriceOffer) {
-            return (
-              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                <div style={{ background: '#1a2a1a', border: '0.5px solid #2a4a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
-                  <div style={{ fontSize: '11px', color: '#555', marginBottom: '6px', letterSpacing: '0.5px' }}>DRIVER OFFER</div>
-                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#c8b86a' }}>${offerAmount.toFixed(2)}</div>
-                  <div style={{ fontSize: '11px', color: '#555', marginTop: '6px' }}>
-                    {isMe ? 'Offer sent. Waiting for Rider acceptance.' : 'Driver offer received.'}
-                  </div>
-                </div>
-              </div>
-            )
-          }
-
-          if (isPriceAccepted) {
-            return (
-              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                <div style={{ background: '#1a2a1a', border: '0.5px solid #2a4a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
-                  <div style={{ fontSize: '16px', marginBottom: '4px' }}>✅</div>
-                  <div style={{ fontSize: '13px', color: '#6dba6d', fontWeight: '600' }}>Ride accepted</div>
-                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#c8b86a', marginTop: '4px' }}>${acceptedAmount.toFixed(2)}</div>
-                </div>
-              </div>
-            )
-          }
-
-          if (isPriceRequest) {
-            return (
-              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                <div style={{ background: '#1a2a1a', border: '0.5px solid #2a4a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
-                  <div style={{ fontSize: '11px', color: '#555', marginBottom: '6px', letterSpacing: '0.5px' }}>PRICE CONFIRMATION REQUEST</div>
-                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#c8b86a', marginBottom: '4px' }}>${requestedPrice.toFixed(2)}</div>
-                  <div style={{ fontSize: '11px', color: '#555', marginBottom: '12px' }}>
-                    {isMe ? 'Waiting for driver to confirm...' : 'Rider is requesting this price'}
-                  </div>
-                  {isDriver && !isMe && (
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={async () => {
-                          await supabase.from('messages').insert({
-                            trip_id: tripId,
-                            sender_id: currentUser?.id || '',
-                            receiver_id: msg.sender_id,
-                            content: `PRICE_CONFIRMED:${requestedPrice}`,
-                          })
-                        }}
-                        style={{ flex: 1, background: '#1e3a1e', color: '#6dba6d', border: '0.5px solid #2a4a2a', borderRadius: '8px', padding: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                        ✅ Confirm Price
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await supabase.from('messages').insert({
-                            trip_id: tripId,
-                            sender_id: currentUser?.id || '',
-                            receiver_id: msg.sender_id,
-                            content: `PRICE_DECLINED:${requestedPrice}`,
-                          })
-                        }}
-                        style={{ flex: 1, background: '#2a1a1a', color: '#f87171', border: '0.5px solid #4a2a2a', borderRadius: '8px', padding: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                        ❌ Decline
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          }
-
-          if (msg.content.startsWith('PRICE_CONFIRMED:')) {
-            const confirmedPrice = parseFloat(msg.content.split(':')[1])
-            return (
-              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                <div style={{ background: '#1a2a1a', border: '0.5px solid #2a4a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
-                  <div style={{ fontSize: '16px', marginBottom: '4px' }}>✅</div>
-                  <div style={{ fontSize: '13px', color: '#6dba6d', fontWeight: '600', marginBottom: '4px' }}>Price Confirmed!</div>
-                  <div style={{ fontSize: '22px', fontWeight: '700', color: '#c8b86a', marginBottom: '8px' }}>${confirmedPrice.toFixed(2)}</div>
-                  {!isDriver && (
-                    <button
-                      onClick={() => { setPaymentAmount(confirmedPrice); setShowPayment(true) }}
-                      style={{ width: '100%', background: '#c8b86a', color: '#111', border: 'none', borderRadius: '8px', padding: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                      💳 PAY NOW
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          }
-
-          if (msg.content.startsWith('PRICE_DECLINED:')) {
-            return (
-              <div key={i} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                <div style={{ background: '#2a1a1a', border: '0.5px solid #4a2a2a', borderRadius: '12px', padding: '14px 18px', textAlign: 'center', maxWidth: '85%' }}>
-                  <div style={{ fontSize: '13px', color: '#f87171', fontWeight: '600' }}>❌ Price Declined</div>
-                  <div style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>Continue negotiating in the chat</div>
-                </div>
-              </div>
-            )
-          }
-
-          return (
-            <div key={i} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
-              <div style={{ maxWidth: '75%' }}>
-                <div style={{ fontSize: '10px', color: '#555', marginBottom: '3px', textAlign: isMe ? 'right' : 'left', padding: '0 4px' }}>
-                  {getSenderName(msg)}
-                </div>
-                <div style={{
-                  padding: '10px 14px',
-                  borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  background: isMe ? '#c8b86a' : '#1e1e1e',
-                  color: isMe ? '#111' : '#e0e0e0',
-                  fontSize: '14px', lineHeight: 1.4,
-                  border: isMe ? 'none' : '0.5px solid #2a2a2a'
-                }}>
-                  {msg.content}
-                </div>
-                <div style={{ fontSize: '10px', color: '#333', marginTop: '3px', textAlign: isMe ? 'right' : 'left', padding: '0 4px' }}>
-                  {formatTime(msg.created_at)}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Payment Modal */}
-      {showPayment && (
-        <PaymentModal
-          amount={paymentAmount}
-          tripId={tripId}
-          driverId={paymentDriverId || trip?.driver_id || ''}
-          onSuccess={() => {
-            setShowPayment(false)
-            alert('Payment successful! Your ride is confirmed. 🚗')
-          }}
-          onCancel={() => setShowPayment(false)}
-        />
-      )}
-
-      {/* Negotiation actions */}
-      {(isDriverParticipant || (isRiderParticipant && latestOffer)) && (
-        <div style={{ padding: '8px 16px', background: '#111', borderTop: '0.5px solid #1a1a1a' }}>
-          {isDriverParticipant && (
-            <button
-              onClick={async () => {
-                const input = prompt('Enter your offer ($1.00–$999.99):')
-                if (input === null) return
-
-                const offer = Number(input)
-
-                if (!Number.isFinite(offer) || offer < 1 || offer > 999.99) {
-                  alert('Enter an offer from $1.00 to $999.99.')
-                  return
-                }
-
-                if (!trip || !currentUser) return
-
-                const receiverId = trip.post_type === 'driver'
-                  ? messages.find(message => message.sender_id !== currentUser?.id)?.sender_id
-                  : trip.rider_id
-
-                if (!receiverId || !currentUser) {
-                  alert('The other participant has not joined this negotiation yet.')
-                  return
-                }
-
-                await supabase.from('messages').insert({
-                  trip_id: tripId,
-                  sender_id: currentUser.id,
-                  receiver_id: receiverId,
-                  content: `PRICE_OFFER:${offer.toFixed(2)}`,
-                })
-              }}
-              style={{ width: '100%', background: '#1e2a1e', color: '#6dba6d', border: '0.5px solid #2a4a2a', borderRadius: '10px', padding: '11px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.5px' }}>
-              🚗 SEND DRIVER OFFER
-            </button>
-          )}
-
-          {isRiderParticipant && latestOffer && (
-            <button
-              onClick={async () => {
-                if (!currentUser) return
-
-                await supabase.from('messages').insert({
-                  trip_id: tripId,
-                  sender_id: currentUser.id,
-                  receiver_id: latestOffer.sender_id,
-                  content: `PRICE_ACCEPTED:${latestOfferAmount.toFixed(2)}`,
-                })
-
-                setPaymentAmount(latestOfferAmount)
-                setPaymentDriverId(latestOffer.sender_id)
-                setShowPayment(true)
-              }}
-              style={{ width: '100%', background: '#c8b86a', color: '#111', border: 'none', borderRadius: '10px', padding: '11px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.5px' }}>
-              ✅ ACCEPT DRIVER OFFER ${latestOfferAmount.toFixed(2)}
-            </button>
-          )}
-        </div>
-      )}
-
-      {messageError && (
-        <div id="message-error" role="alert" style={{ padding: '8px 16px', background: '#2a1a1a', color: '#f87171', fontSize: '12px' }}>
-          {messageError}
-        </div>
-      )}
-
-      {/* Input */}
-      <div style={{ padding: '12px 16px', borderTop: '0.5px solid #222', display: 'flex', gap: '10px', alignItems: 'center', background: '#111', flexShrink: 0 }}>
-        <FieldHelp fieldName="message">Required to send. Use up to 140 characters. Text, punctuation, and emoji are accepted. Example: I can meet at the main entrance.</FieldHelp>
-        <input
-          type="text"
-          value={newMessage}
-          onChange={e => {
-            setNewMessage(Array.from(e.target.value).slice(0, 140).join(''))
-            if (messageError) setMessageError('')
-          }}
-          onKeyDown={e => e.key === 'Enter' && sendMessage()}
-          placeholder={`Message ${otherProfile?.full_name || 'driver'}...`}
-          aria-invalid={Boolean(messageError)}
-          aria-describedby={messageError ? 'message-error' : undefined}
-          style={{ flex: 1, background: '#1a1a1a', border: '0.5px solid #2a2a2a', borderRadius: '99px', padding: '10px 16px', fontSize: '14px', color: '#e0e0e0', outline: 'none' }}
-        />
-        <button onClick={sendMessage}
-          style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#c8b86a', border: 'none', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer' }}>
-          ↑
-        </button>
-      </div>
-    </div>
-  )
+  const data = resource.data
+  return <AccountPage title={data?.other.full_name || 'Conversation'} back="/dms"><Feedback error={error} success={success} /><ResourceState {...resource} retry={resource.refresh}>
+    {data && <>
+      <section className="panel"><h2>{data.trip.origin || 'Driver availability'}{data.trip.destination ? ` → ${data.trip.destination}` : ''}</h2><button type="button" className="secondary-button" disabled={busy} onClick={() => void resource.refresh()}>Refresh conversation</button>
+      {data.ride ? <><p>Ride: <strong>{data.ride.status.replace('_', ' ')}</strong> · Agreed Wager Price {money(data.ride.amount_cents, data.ride.currency_code)}</p><p>Accepted terms are locked.</p><div className="button-row">
+        {data.isDriver && data.ride.status === 'accepted' && <button disabled={busy} className="primary-button" onClick={() => void perform(`/api/rides/${data.ride!.id}`, { action: 'start' }, 'PATCH', 'Ride started.')}>Start ride</button>}
+        {data.isDriver && data.ride.status === 'in_progress' && <button disabled={busy} className="primary-button" onClick={() => void perform(`/api/rides/${data.ride!.id}`, { action: 'complete' }, 'PATCH', 'Ride completed.')}>Complete ride</button>}
+        {data.ride.status === 'accepted' && <button disabled={busy} className="secondary-button" onClick={() => { if (window.confirm('Cancel this accepted ride?')) void perform(`/api/rides/${data.ride!.id}`, { action: 'cancel' }, 'PATCH', 'Ride canceled.') }}>Cancel ride</button>}
+        {!data.isDriver && data.ride.status !== 'canceled' && <button disabled={busy} className="primary-button" onClick={() => setPay(true)}>Payment</button>}
+        <Link href="/profile/settings/ride-history">History and optional review</Link>
+      </div></> : <>
+        {!data.trip.is_active && <p>This post is closed.</p>}
+        {data.offers.map(item => <div key={item.id}><p>Driver offer: <strong>{money(item.amount_cents, item.currency_code)}</strong> · {item.status}</p>{!data.isDriver && item.status === 'pending' && data.trip.is_active && <button className="primary-button" disabled={busy} onClick={() => { if (window.confirm(`Accept the Driver's ${money(item.amount_cents, item.currency_code)} offer and confirm this ride?`)) void perform('/api/rides/accept', { trip_id: tripId, offer_id: item.id }, 'POST', 'Ride confirmed. The agreed price is locked.') }}>Accept Driver offer</button>}</div>)}
+        {data.isDriver && data.trip.is_active && <form onSubmit={offer} noValidate><ErrorSummary errors={attempted === 'offer' ? errors : {}} /><div className="form-field"><label htmlFor="amount">Driver Wager Price offer (USD)</label><input id="amount" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} {...invalidProps('amount', errors)} /><small>$1.00–$999.00. Send a message first to establish this conversation.</small><FieldError id="amount" errors={errors} /></div><button className="primary-button" disabled={busy}>Send offer</button></form>}
+      </>}
+      </section>
+      <section className="panel" aria-label="Messages">{data.messages.length === 0 && <p>No messages yet.</p>}{data.messages.map(item => <article key={item.id} style={{ padding: '10px 0', overflowWrap: 'anywhere' }}><strong>{item.sender_id === data.userId ? 'You' : data.other.full_name || 'Participant'}</strong><p style={{ whiteSpace: 'pre-wrap' }}>{item.content}</p><small>{new Date(item.created_at).toLocaleString()}</small></article>)}
+        <div className="button-row">{page > 0 && <button className="secondary-button" onClick={() => setPage(page - 1)}>Newer</button>}{data.hasMore && <button className="secondary-button" onClick={() => setPage(page + 1)}>Older</button>}</div>
+      </section>
+      <form className="panel" onSubmit={send} noValidate><ErrorSummary errors={attempted === 'message' ? errors : {}} /><div className="form-field"><label htmlFor="message">Message<FieldHelp fieldName="Message">Required. Up to 140 characters, including emoji.</FieldHelp></label><textarea id="message" value={message} onChange={e => setMessage(e.target.value)} {...invalidProps('message', errors)} /><FieldError id="message" errors={errors} /></div><button disabled={busy} className="primary-button">{busy ? 'Sending…' : 'Send message'}</button></form>
+      {pay && data.ride && <PaymentModal rideId={data.ride.id} onCancel={() => setPay(false)} onSuccess={() => { setPay(false); setSuccess('Payment confirmed.'); void resource.refresh() }} />}
+    </>}
+  </ResourceState></AccountPage>
 }
