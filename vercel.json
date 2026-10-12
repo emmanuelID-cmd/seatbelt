@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "path": "/api/cron/driver-eligibility-upload-cleanup",
+      "path": "/api/cron/platform-maintenance",
       "schedule": "0 0 * * *"
     }
   ]
