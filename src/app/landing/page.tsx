@@ -126,7 +126,7 @@ export default function LandingPage() {
           </p>
           <div style={{ background: '#1a1a1a', borderLeft: '3px solid #c8b86a', borderRadius: '0 12px 12px 0', padding: '24px 28px', textAlign: 'left', marginBottom: '40px' }}>
             <p style={{ fontSize: '18px', fontStyle: 'italic', color: '#e0e0e0', lineHeight: 1.7, margin: '0 0 12px' }}>
-              "No surge pricing. No app tax. No middleman. Just neighbors, moving together."
+              &quot;No surge pricing. No app tax. No middleman. Just neighbors, moving together.&quot;
             </p>
             <p style={{ fontSize: '13px', color: '#555', margin: 0 }}>— Lookman Kinoshi, Founder & CEO</p>
           </div>

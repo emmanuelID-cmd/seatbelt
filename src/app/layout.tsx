@@ -1,4 +1,5 @@
 import SiteFooter from '@/components/SiteFooter'
+import AppChrome from '@/components/AppChrome'
 import type { Metadata } from 'next'
 import './globals.css'
 
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children} <SiteFooter /></body>
+      <body><AppChrome footer={<SiteFooter />}>{children}</AppChrome></body>
     </html>
   )
 }

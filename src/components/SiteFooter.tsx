@@ -2,18 +2,7 @@ export default function SiteFooter() {
   const year = new Date().getFullYear()
 
   return (
-    <footer
-      style={{
-        width: '100%',
-        padding: '1.5rem 1rem',
-        textAlign: 'center',
-        fontSize: '0.875rem',
-        lineHeight: '1.4rem',
-        color: 'inherit',
-        borderTop: '1px solid currentColor',
-        opacity: 0.8,
-      }}
-    >
+    <footer className="site-footer">
       <p style={{ margin: 0 }}>
         © {year} Seatbelt by Kinoshi. All rights reserved.
       </p>
