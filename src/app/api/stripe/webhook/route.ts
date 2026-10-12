@@ -1,6 +1,7 @@
 import Stripe from 'stripe'
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabaseServer'
+import { getVerifiedDriverLicenseExpiry } from '@/lib/stripeIdentity'
 
 export const runtime = 'nodejs'
 
@@ -27,19 +28,37 @@ export async function POST(request: NextRequest) {
     const updates = {
       status,
       last_error_code: lastError?.code || null,
-      last_error_message: lastError?.reason || null,
+      last_error_message: lastError ? 'Verification needs attention. Continue the secure verification flow.' : null,
       submitted_at: status === 'processing' ? new Date().toISOString() : null,
       verified_at: status === 'verified' ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
     }
-    const { error } = await createServiceRoleClient()
-      .from('identity_verifications')
-      .update(updates)
-      .eq('stripe_verification_session_id', session.id)
-    if (error) throw error
+    const db = createServiceRoleClient()
+    const [identityResult, licenseResult, eligibilityIdentityResult] = await Promise.all([
+      db.from('identity_verifications').update(updates).eq('stripe_verification_session_id', session.id),
+      db.from('driver_license_verifications').update(updates).eq('stripe_verification_session_id', session.id).select('user_id'),
+      db.from('driver_eligibility_identity_checks').update(updates).eq('stripe_verification_session_id', session.id),
+    ])
+    if (identityResult.error) throw identityResult.error
+    if (licenseResult.error) throw licenseResult.error
+    if (eligibilityIdentityResult.error) throw eligibilityIdentityResult.error
+    if (status === 'verified' && licenseResult.data?.length) {
+      try {
+        const expiry = await getVerifiedDriverLicenseExpiry(session.id)
+        if (expiry) {
+          const { error } = await db.from('driver_license_verifications')
+            .update({ license_expires_on: expiry, updated_at: new Date().toISOString() })
+            .eq('stripe_verification_session_id', session.id)
+          if (error) throw error
+        }
+      } catch {
+        // Verification remains recorded; Driver mode stays unavailable until
+        // restricted result access supplies the license expiration date.
+      }
+    }
 
     return NextResponse.json({ received: true })
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Webhook processing failed.' }, { status: 400 })
+  } catch {
+    return NextResponse.json({ error: 'Webhook processing failed.' }, { status: 400 })
   }
 }
