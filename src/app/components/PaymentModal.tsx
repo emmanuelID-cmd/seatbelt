@@ -1,143 +1,80 @@
 'use client'
-import { useState } from 'react'
+
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { apiRequest } from '@/lib/apiClient'
+import { Feedback } from '@/components/AccountPage'
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+const stripePromise = publishableKey ? loadStripe(publishableKey) : null
+type PaymentIntent = { clientSecret: string | null; amountCents: number; currency: string; status: string }
 
-function CheckoutForm({ amount, onSuccess, onCancel }: { amount: number, onSuccess: () => void, onCancel: () => void }) {
+function CheckoutForm({ amountCents, onSubmitted, setBusy }: { amountCents: number; onSubmitted: () => Promise<void>; setBusy: (busy: boolean) => void }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
-
-  async function handleSubmit() {
-    if (!stripe || !elements) return
-    setLoading(true)
-    setError('')
-
-    const { error } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/feed`,
-      },
-      redirect: 'if_required',
-    })
-
-    if (error) {
-      setError(error.message || 'Payment failed')
-      setLoading(false)
-    } else {
-      onSuccess()
-    }
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!stripe || !elements || loading || submitted) return
+    setLoading(true); setBusy(true); setError('')
+    try {
+      const result = await stripe.confirmPayment({ elements, confirmParams: { return_url: window.location.origin + '/profile/settings/ride-history' }, redirect: 'if_required' })
+      if (result.error) setError(result.error.message || 'Payment could not be submitted. Review your payment details and try again.')
+      else { setSubmitted(true); await onSubmitted() }
+    } catch { setError('Payment confirmation is temporarily unavailable. Check the payment status before trying again.') }
+    finally { setLoading(false); setBusy(false) }
   }
-
-  const fee = (amount * 0.025).toFixed(2)
-  const total = (amount * 1.025).toFixed(2)
-
-  return (
-    <div>
-      <div style={{ background: '#222', borderRadius: '10px', padding: '14px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <span style={{ color: '#777', fontSize: '13px' }}>Ride price</span>
-          <span style={{ color: '#e0e0e0', fontSize: '13px' }}>${amount.toFixed(2)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <span style={{ color: '#777', fontSize: '13px' }}>SeatBelt fee (2.5%)</span>
-          <span style={{ color: '#777', fontSize: '13px' }}>${fee}</span>
-        </div>
-        <div style={{ borderTop: '0.5px solid #333', paddingTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: '600' }}>Total</span>
-          <span style={{ color: '#c8b86a', fontSize: '14px', fontWeight: '600' }}>${total}</span>
-        </div>
-      </div>
-
-      <PaymentElement />
-
-      {error && (
-        <div style={{ background: '#2a1a1a', border: '0.5px solid #5a2a2a', borderRadius: '8px', padding: '10px', marginTop: '12px', fontSize: '13px', color: '#f87171' }}>
-          {error}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-        <button onClick={onCancel}
-          style={{ flex: 1, background: 'transparent', border: '0.5px solid #333', borderRadius: '10px', padding: '12px', color: '#666', fontSize: '14px', cursor: 'pointer' }}>
-          Cancel
-        </button>
-        <button onClick={handleSubmit} disabled={loading || !stripe}
-          style={{ flex: 2, background: '#c8b86a', color: '#111', border: 'none', borderRadius: '10px', padding: '12px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', opacity: loading || !stripe ? 0.7 : 1 }}>
-          {loading ? 'Processing...' : `Pay $${total}`}
-        </button>
-      </div>
-    </div>
-  )
+  return <form onSubmit={submit}>
+    <p>Agreed ride total: <strong>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amountCents / 100)}</strong></p>
+    {!submitted && <PaymentElement />}
+    <Feedback error={error} />
+    {!submitted && <button type="submit" className="primary-button" disabled={loading || !stripe || !elements}>{loading ? <><span className="loading-indicator" aria-hidden="true" />Submitting payment…</> : 'Pay $' + (amountCents / 100).toFixed(2)}</button>}
+  </form>
 }
 
-export default function PaymentModal({ amount, tripId, driverId, onSuccess, onCancel }: {
-  amount: number
-  tripId: string
-  driverId: string
-  onSuccess: () => void
-  onCancel: () => void
-}) {
-  const [clientSecret, setClientSecret] = useState('')
-  const [loadingIntent, setLoadingIntent] = useState(false)
+export default function PaymentModal({ rideId, onSuccess, onCancel }: { rideId: string; onSuccess: () => void; onCancel: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const [intent, setIntent] = useState<PaymentIntent | null>(null)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-
-  async function initPayment() {
-    setLoadingIntent(true)
+  const [message, setMessage] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  useEffect(() => { const element = dialog.current; element?.showModal(); return () => element?.close() }, [])
+  async function checkStatus() {
+    setBusy(true); setError('')
     try {
-      const res = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, tripId, driverId }),
-      })
-      const data = await res.json()
-      if (data.error) { setError(data.error); setLoadingIntent(false); return }
-      setClientSecret(data.clientSecret)
-    } catch (e) {
-      setError('Failed to initialize payment')
-    }
-    setLoadingIntent(false)
+      const payment = await apiRequest<{ status: string }>('/api/billing/payment-status?rideId=' + encodeURIComponent(rideId))
+      if (payment.status === 'succeeded') { onSuccess(); return }
+      setMessage(['refunded', 'partially_refunded'].includes(payment.status) ? 'This payment has a recorded refund. Review your ride history.' : payment.status === 'canceled' ? 'This payment was canceled. Contact support before retrying.' : 'Payment is awaiting provider confirmation. You can close this window and check your ride history, or refresh the status shortly.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Payment status is temporarily unavailable.') }
+    finally { setBusy(false) }
   }
-
-  return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', overflowY: 'auto' }}>
-      <div style={{ background: '#1a1a1a', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '420px', border: '0.5px solid #2a2a2a' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <span style={{ color: '#e0e0e0', fontSize: '17px', fontWeight: '600' }}>Confirm & Pay</span>
-          <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#555', fontSize: '20px', cursor: 'pointer' }}>✕</button>
-        </div>
-
-        {!clientSecret && !loadingIntent && (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <div style={{ fontSize: '36px', marginBottom: '12px' }}>🚗</div>
-            <p style={{ color: '#aaa', fontSize: '14px', marginBottom: '6px' }}>Ride price agreed: <span style={{ color: '#c8b86a', fontWeight: '700' }}>${amount.toFixed(2)}</span></p>
-            <p style={{ color: '#555', fontSize: '12px', marginBottom: '20px' }}>A 2.5% SeatBelt fee will be added</p>
-            <button onClick={initPayment}
-              style={{ width: '100%', background: '#c8b86a', color: '#111', border: 'none', borderRadius: '10px', padding: '14px', fontSize: '15px', fontWeight: '700', cursor: 'pointer' }}>
-              PROCEED TO PAYMENT
-            </button>
-          </div>
-        )}
-
-        {loadingIntent && (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#444' }}>Setting up payment...</div>
-        )}
-
-        {error && (
-          <div style={{ background: '#2a1a1a', border: '0.5px solid #5a2a2a', borderRadius: '8px', padding: '12px', color: '#f87171', fontSize: '13px' }}>
-            {error}
-          </div>
-        )}
-
-        {clientSecret && (
-          <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'night', variables: { colorPrimary: '#c8b86a' } } }}>
-            <CheckoutForm amount={amount} onSuccess={onSuccess} onCancel={onCancel} />
-          </Elements>
-        )}
-      </div>
-    </div>
-  )
+  async function initialize() {
+    if (busy) return
+    setBusy(true); setError('')
+    try {
+      const payment = await apiRequest<PaymentIntent>('/api/create-payment-intent', { method: 'POST', body: JSON.stringify({ rideId }) })
+      setIntent(payment)
+      if (!payment.clientSecret) { setSubmitted(true); await checkStatus() }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Payment setup is temporarily unavailable.') }
+    finally { setBusy(false) }
+  }
+  return <dialog ref={dialog} aria-labelledby="payment-title" onCancel={event => { event.preventDefault(); if (!busy) onCancel() }} style={{ position: 'fixed', inset: 0, margin: 'auto', width: 'min(440px, calc(100% - 32px))', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', background: '#1a1a1a', color: '#e0e0e0', border: '1px solid #777', borderRadius: 16, padding: 24 }}>
+    <h2 id="payment-title">Pay for your accepted ride</h2>
+    <p className="muted">The amount comes from your accepted ride agreement. Payment is recorded only after provider confirmation.</p>
+    {!stripePromise ? <p className="status-note">Payment checkout is not configured yet.</p> : <>
+      {!intent && <button className="primary-button" disabled={busy} onClick={() => void initialize()}>Review payment</button>}
+      {intent?.clientSecret && <Elements stripe={stripePromise} options={{ clientSecret: intent.clientSecret, appearance: { theme: 'night', variables: { colorPrimary: '#c8b86a' } } }}>
+        <CheckoutForm amountCents={intent.amountCents} setBusy={setBusy} onSubmitted={async () => { setSubmitted(true); await checkStatus() }} />
+      </Elements>}
+      {submitted && <button className="secondary-button" disabled={busy} onClick={() => void checkStatus()}>Check payment status</button>}
+    </>}
+    {busy && <p role="status"><span className="loading-indicator" aria-hidden="true" />Contacting payment provider…</p>}
+    <Feedback error={error} />
+    {message && <p className="status-note" role="status">{message}</p>}
+    <button className="secondary-button" disabled={busy} onClick={onCancel}>Close</button>
+  </dialog>
 }

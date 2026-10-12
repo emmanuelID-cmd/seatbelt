@@ -1,0 +1,3 @@
+'use client'
+import AccountPage,{SettingsLink} from '@/components/AccountPage'
+export default function AdminPage(){return <AccountPage title="Administrator tools" back="/profile"><p className="status-note">Administrator tools require founding-administrator authority and verified multi-factor authentication. Access is checked by each protected API.</p><section className="panel"><SettingsLink href="/admin/security" title="Verify administrator access"/><SettingsLink href="/admin/analytics" title="Operations, Finance, Trust & Safety"/><SettingsLink href="/admin/support" title="Support requests and appeals"/><SettingsLink href="/admin/driver-eligibility" title="Private Driver eligibility review"/></section></AccountPage>}

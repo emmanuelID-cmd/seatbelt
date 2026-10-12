@@ -103,7 +103,7 @@ export default function AboutPage() {
         {/* Quote */}
         <div style={{ borderLeft: '3px solid #c8b86a', paddingLeft: '20px', marginBottom: '36px' }}>
           <p style={{ fontSize: '17px', fontStyle: 'italic', color: '#e0e0e0', lineHeight: 1.7, margin: '0 0 10px' }}>
-            "No surge pricing. No app tax. No middleman. Just neighbors, moving together."
+            &quot;No surge pricing. No app tax. No middleman. Just neighbors, moving together.&quot;
           </p>
           <p style={{ fontSize: '12px', color: '#555', margin: 0 }}>— Lookman Kinoshi, Founder & CEO</p>
         </div>

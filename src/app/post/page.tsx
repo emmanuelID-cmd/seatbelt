@@ -1,172 +1,59 @@
 'use client'
-import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import AccountPage, { Feedback } from '@/components/AccountPage'
+import { ErrorSummary, FieldError, invalidProps, ResourceState, requestError, useResource } from '@/app/profile/settings/_components'
+import { apiRequest } from '@/lib/apiClient'
+import { postErrors, type PostInput, type RideSession } from '@/lib/rides'
+import type { Trip } from '@/lib/supabase'
 
-export default function PostTripPage() {
+export default function PostPage() { return <Suspense fallback={<p role="status">Loading…</p>}><PostLoader /></Suspense> }
+function PostLoader() {
+  const edit = useSearchParams().get('edit')
+  const resource = useResource<{ session?: RideSession; trip?: Trip; locked?: boolean }>(edit ? `/api/rides/posts/${encodeURIComponent(edit)}` : '/api/rides/posts?mine=true')
+  return <AccountPage title={edit ? 'Edit post' : 'Create post'} showBack={false}><ResourceState {...resource} retry={resource.refresh}>
+    {resource.data?.locked ? <p className="panel">This post has an accepted ride. Its terms are locked.</p> : resource.data && <PostForm key={edit || 'new'} trip={resource.data.trip} mode={resource.data.trip?.post_type || resource.data.session?.mode || 'rider'} />}
+  </ResourceState></AccountPage>
+}
+function PostForm({ trip, mode }: { trip?: Trip; mode: 'driver' | 'rider' }) {
   const router = useRouter()
-  const [postType, setPostType] = useState<'driver' | 'rider'>('driver')
-  const [origin, setOrigin] = useState('')
-  const [destination, setDestination] = useState('')
-  const [departureTime, setDepartureTime] = useState('')
-  const [seats, setSeats] = useState('1')
-  const [price, setPrice] = useState('')
-  const [caption, setCaption] = useState('')
-  const [loading, setLoading] = useState(false)
+  const initialDate = trip?.departure_time ? new Date(trip.departure_time) : null
+  const scheduled = Boolean(initialDate)
+  const localDate = initialDate ? new Date(initialDate.getTime() - initialDate.getTimezoneOffset() * 60000).toISOString() : ''
+  const [origin, setOrigin] = useState(trip?.origin || '')
+  const [destination, setDestination] = useState(trip?.destination || '')
+  const [asap, setAsap] = useState(!scheduled)
+  const [date, setDate] = useState(scheduled ? localDate.slice(0, 10) : '')
+  const [time, setTime] = useState(scheduled ? localDate.slice(11, 16) : '')
+  const [seats, setSeats] = useState(String(trip?.seats_available || 1))
+  const [minimum, setMinimum] = useState(String(trip?.price_min ?? '1.00'))
+  const [maximum, setMaximum] = useState(String(trip?.price_max ?? '1.00'))
+  const [notes, setNotes] = useState(trip?.notes || '')
+  const [attempted, setAttempted] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-
-  async function postTrip() {
-    if (!origin || !destination || !departureTime) {
-      setError('Please fill in origin, destination and departure time')
-      return
-    }
-    setLoading(true)
-    setError('')
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
-
-    const { error: tripError } = await supabase.from('trips').insert({
-      driver_id: user.id,
-      origin,
-      destination,
-      departure_time: departureTime,
-      seats_available: parseInt(seats),
-      suggested_price: price,
-      notes: caption,
-      is_active: true,
-    })
-
-    if (tripError) { setError(tripError.message); setLoading(false); return }
-    router.push('/feed')
+  const departure = !asap && date && time ? new Date(`${date}T${time}`) : null
+  const input: PostInput = { origin, destination, departure_time: asap ? null : departure && Number.isFinite(departure.getTime()) ? departure.toISOString() : '', seats_available: Number(seats), price_min: minimum.trim() ? Number(minimum) : null, price_max: maximum.trim() ? Number(maximum) : null, notes }
+  const validation = postErrors(input, mode)
+  const errors = attempted ? validation : {}
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setAttempted(true)
+    if (Object.keys(validation).length) return
+    setBusy(true); setError('')
+    try { await apiRequest(trip ? `/api/rides/posts/${trip.id}` : '/api/rides/posts', { method: trip ? 'PATCH' : 'POST', body: JSON.stringify(input) }); router.push('/feed') }
+    catch (cause) { setError(requestError(cause)) } finally { setBusy(false) }
   }
-
-  return (
-    <div style={{ minHeight: '100vh', background: '#111', paddingBottom: '40px' }}>
-
-      {/* Header */}
-      <div style={{ background: '#111', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '0.5px solid #222', position: 'sticky', top: 0, zIndex: 10 }}>
-        <button onClick={() => router.push('/feed')} style={{ background: 'none', border: 'none', color: '#aaa', fontSize: '22px' }}>←</button>
-        <span style={{ color: '#e0e0e0', fontSize: '17px', fontWeight: '600', letterSpacing: '1px' }}>New Post</span>
-      </div>
-
-      <div style={{ maxWidth: '500px', margin: '0 auto', padding: '16px' }}>
-
-        {/* Post type toggle */}
-        <div style={{ display: 'flex', background: '#1a1a1a', borderRadius: '12px', padding: '4px', marginBottom: '20px', border: '0.5px solid #2a2a2a' }}>
-          <button
-            onClick={() => setPostType('driver')}
-            style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: postType === 'driver' ? '#2a3a2a' : 'transparent', color: postType === 'driver' ? '#6dba6d' : '#444', fontSize: '13px', fontWeight: '600', letterSpacing: '0.5px' }}
-          >
-            🚗 I'M DRIVING
-          </button>
-          <button
-            onClick={() => setPostType('rider')}
-            style={{ flex: 1, padding: '10px', borderRadius: '10px', border: 'none', background: postType === 'rider' ? '#1a2a3a' : 'transparent', color: postType === 'rider' ? '#6d8dba' : '#444', fontSize: '13px', fontWeight: '600', letterSpacing: '0.5px' }}
-          >
-            🙋 I NEED A RIDE
-          </button>
-        </div>
-
-        <div style={{ background: '#1a1a1a', borderRadius: '16px', padding: '20px', border: '0.5px solid #2a2a2a' }}>
-
-          {error && (
-            <div style={{ background: '#2a1a1a', border: '0.5px solid #5a2a2a', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#f87171' }}>
-              {error}
-            </div>
-          )}
-
-          {/* Origin */}
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>📍 DEPARTING FROM</label>
-            <input
-              type="text"
-              value={origin}
-              onChange={e => setOrigin(e.target.value)}
-              placeholder="e.g. Coney Island, Brooklyn"
-              style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
-            />
-          </div>
-
-          {/* Destination */}
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>🏁 DESTINATION</label>
-            <input
-              type="text"
-              value={destination}
-              onChange={e => setDestination(e.target.value)}
-              placeholder="e.g. Downtown Brooklyn"
-              style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
-            />
-          </div>
-
-          {/* Time + Seats */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>🕐 DEPARTURE TIME</label>
-              <input
-                type="text"
-                value={departureTime}
-                onChange={e => setDepartureTime(e.target.value)}
-                placeholder="e.g. 2:00 PM"
-                style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
-              />
-            </div>
-            {postType === 'driver' && (
-              <div style={{ width: '110px' }}>
-                <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>💺 SEATS</label>
-                <select
-                  value={seats}
-                  onChange={e => setSeats(e.target.value)}
-                  style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
-                >
-                  <option>1</option>
-                  <option>2</option>
-                  <option>3</option>
-                  <option>4</option>
-                </select>
-              </div>
-            )}
-          </div>
-
-          {/* Price */}
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>
-              💰 {postType === 'driver' ? 'SUGGESTED PRICE' : 'MY WAGER (WILLING TO PAY)'}
-            </label>
-            <input
-              type="text"
-              value={price}
-              onChange={e => setPrice(e.target.value)}
-              placeholder={postType === 'driver' ? 'e.g. $8-12 or open to offers' : 'e.g. $15'}
-              style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none' }}
-            />
-          </div>
-
-          {/* Caption */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ fontSize: '11px', color: '#555', display: 'block', marginBottom: '6px', letterSpacing: '0.5px' }}>✍️ CAPTION</label>
-            <textarea
-              value={caption}
-              onChange={e => setCaption(e.target.value)}
-              placeholder={postType === 'driver'
-                ? "e.g. Already heading downtown — ride with me and save big vs Uber. No surge, no nonsense 🤝"
-                : "e.g. Need a ride to JFK asap, flexible on pickup. Uber wanted $60 — that's crazy 🙏"
-              }
-              rows={3}
-              style={{ background: '#222', border: '0.5px solid #333', borderRadius: '8px', padding: '11px 12px', fontSize: '14px', color: '#e0e0e0', width: '100%', outline: 'none', resize: 'none', fontFamily: 'inherit', lineHeight: 1.5 }}
-            />
-          </div>
-
-          <button
-            onClick={postTrip}
-            disabled={loading}
-            style={{ width: '100%', background: postType === 'driver' ? '#c8b86a' : '#5a7aaa', color: '#111', border: 'none', borderRadius: '10px', padding: '14px', fontSize: '14px', fontWeight: '700', letterSpacing: '1px', opacity: loading ? 0.7 : 1 }}
-          >
-            {loading ? 'POSTING...' : postType === 'driver' ? '🚗 POST TRIP TO FEED' : '🙋 POST RIDE REQUEST'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
+  return <form className="panel" onSubmit={submit} noValidate><h2>{mode === 'driver' ? 'Driver availability' : 'Rider request'}</h2><ErrorSummary errors={errors} /><Feedback error={error} />
+    {mode === 'rider' && <>
+      <div className="form-field"><label htmlFor="origin">Departure</label><input id="origin" value={origin} maxLength={200} onChange={e => setOrigin(e.target.value)} {...invalidProps('origin', errors)} /><FieldError id="origin" errors={errors} /></div>
+      <div className="form-field"><label htmlFor="destination">Arrival</label><input id="destination" value={destination} maxLength={200} onChange={e => setDestination(e.target.value)} {...invalidProps('destination', errors)} /><FieldError id="destination" errors={errors} /></div>
+      <label><input type="checkbox" checked={asap} onChange={e => setAsap(e.target.checked)} /> Present / ASAP</label>
+      {!asap && <fieldset id="departure_time"><legend>Scheduled departure (your local time)</legend><div className="two-column"><div className="form-field"><label htmlFor="departure-date">Date</label><input id="departure-date" type="date" value={date} onChange={e => setDate(e.target.value)} {...invalidProps('departure_time', errors)} /></div><div className="form-field"><label htmlFor="departure-time">Time</label><input id="departure-time" type="time" value={time} onChange={e => setTime(e.target.value)} {...invalidProps('departure_time', errors)} /></div></div><FieldError id="departure_time" errors={errors} /></fieldset>}
+      <p className="status-note">Estimated Wager Price: $1.00–$999.00. A Driver can offer above or below your estimate within these limits. You choose whether to accept.</p>
+      <div className="two-column">{[{ id: 'price_min', label: 'Minimum Wager Price (USD)', value: minimum, set: setMinimum }, { id: 'price_max', label: 'Maximum Wager Price (USD)', value: maximum, set: setMaximum }].map(field => <div className="form-field" key={field.id}><label htmlFor={field.id}>{field.label}</label><input id={field.id} type="number" min="1" max="999" step="1" value={field.value} onChange={e => field.set(e.target.value)} {...invalidProps(field.id, errors)} /><FieldError id={field.id} errors={errors} /></div>)}</div>
+    </>}
+    <div className="form-field"><label htmlFor="seats_available">{mode === 'driver' ? 'Available seats' : 'Seats needed'}</label><input id="seats_available" type="number" min="1" max="4" step="1" value={seats} onChange={e => setSeats(e.target.value)} {...invalidProps('seats_available', errors)} /><FieldError id="seats_available" errors={errors} /></div>
+    <div className="form-field"><label htmlFor="notes">Notes (optional, up to 280 characters)</label><textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} {...invalidProps('notes', errors)} /><FieldError id="notes" errors={errors} /></div>
+    <button className="primary-button" disabled={busy}>{busy ? 'Saving…' : trip ? 'Save changes' : 'Post'}</button>
+  </form>
 }

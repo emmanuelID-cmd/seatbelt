@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+docs/source-policy/word/
+
+.env.local
+.vercel
+.env*
+
+# Keep the safe variable-name template in Git.
+!.env.example
+
+# Confidential temporary planning documents stay local until secure archival.
+/docs/confidential-working/
+/seatbelt.code-workspace
+/.local-supabase/
