@@ -1,273 +1,340 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 
-export default function NearbyPage() {
-  const router = useRouter()
-  const [currentUser, setCurrentUser] = useState<any>(null)
-  const [currentProfile, setCurrentProfile] = useState<any>(null)
-  const [nearbyUsers, setNearbyUsers] = useState<any[]>([])
-  const [myLocation, setMyLocation] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [locationError, setLocationError] = useState('')
-  const [filter, setFilter] = useState<'all' | 'drivers' | 'riders'>('all')
-  const watchRef = useRef<number | null>(null)
+import Link from 'next/link'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import AccountPage, { Feedback } from '@/components/AccountPage'
+import { apiRequest } from '@/lib/apiClient'
+import type { LocationStatus, NearbyResult, SharingSession } from '@/lib/location'
 
+const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || ''
+const mapboxConfigured = mapboxToken.startsWith('pk.')
+
+function AreaMap({ center }: { center: { latitude: number; longitude: number } }) {
+  const [visible, setVisible] = useState(false)
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
-    init()
-    return () => {
-      if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current)
-    }
-  }, [])
+    if (!visible || state !== 'loading') return
+    const timeout = window.setTimeout(() => setState('error'), 15000)
+    return () => window.clearTimeout(timeout)
+  }, [visible, state, attempt])
+  if (!mapboxConfigured) return <p className="status-note">The map is unavailable because Mapbox is not configured with a public map token. The nearby list works without a map.</p>
+  if (Math.abs(center.latitude) > 85.0511) return <p className="status-note">The map cannot display this polar area. Use the nearby list.</p>
+  // Only the rounded search area is sent to Mapbox, never precise GPS or Driver positions.
+  const source = `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${center.longitude},${center.latitude},9/640x400?access_token=${encodeURIComponent(mapboxToken)}`
+  return <section aria-label="Approximate search area map">
+    <p className="muted">Show a static map of your approximate search area. Loading it shares that area and your network address with Mapbox. Driver positions and travel routes are not sent to Mapbox.</p>
+    {!visible ? <button type="button" className="secondary-button" onClick={() => { setVisible(true); setState('loading') }}>Show area map</button> : <>
+      {state === 'loading' && <p role="status">Loading area map…</p>}
+      {state === 'error' ? <div><p role="alert">The map is temporarily unavailable. The nearby list remains available.</p><button type="button" className="secondary-button" onClick={() => { setAttempt(value => value + 1); setState('loading') }}>Retry map</button></div> : <figure style={{ margin: '16px 0' }}>
+        {/* A direct image preserves Mapbox attribution and avoids server caching of a location-derived image. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img key={attempt} src={source} alt="Street map of the approximate search area; no live Driver markers or routes" width={640} height={400} referrerPolicy="strict-origin" onLoad={() => setState('ready')} onError={() => setState('error')} style={{ width: '100%', height: 'auto', borderRadius: 8 }} />
+        <figcaption className="muted">Area overview only. See approximate Driver distances in the list.</figcaption>
+      </figure>}
+      <button type="button" className="secondary-button" onClick={() => setVisible(false)}>Hide map</button>
+    </>}
+  </section>
+}
 
-  async function init() {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { window.location.href = '/login'; return }
-    setCurrentUser(session.user)
+function positionError(error: GeolocationPositionError) {
+  if (error.code === 1) return 'Location permission was denied. Allow location in your browser settings, then try again.'
+  if (error.code === 3) return 'Your device location timed out. Move to a place with a stronger signal and try again.'
+  return 'Your device location is unavailable. Check location services and try again.'
+}
 
-    const { data: profile } = await supabase
-      .from('profiles').select('*').eq('id', session.user.id).single()
-    setCurrentProfile(profile)
-
-    startTracking(session.user.id, profile?.is_driver || false)
-  }
-
-  function startTracking(userId: string, isDriver: boolean) {
-    if (!navigator.geolocation) {
-      setLocationError('Location not supported on this device')
-      setLoading(false)
+function deviceLocation() {
+  return new Promise<GeolocationPosition>((resolve, reject) => {
+    if (!window.isSecureContext || !navigator.geolocation) {
+      reject(new Error('Location requires a supported browser and a secure connection.'))
       return
     }
-
-    watchRef.current = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords
-        setMyLocation({ latitude, longitude })
-
-        await supabase.from('user_locations').upsert({
-          user_id: userId,
-          latitude,
-          longitude,
-          is_driver: isDriver,
-          is_active: true,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' })
-
-        fetchNearby(latitude, longitude, userId)
-        setLoading(false)
-      },
-      (err) => {
-        setLocationError('Please enable location to use this feature')
-        setLoading(false)
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-    )
-  }
-
-  async function fetchNearby(lat: number, lng: number, myId: string) {
-    const { data: locations } = await supabase
-      .from('user_locations')
-      .select('*, profiles(full_name, avatar_initials, is_driver, rating, car_make, car_model)')
-      .eq('is_active', true)
-      .neq('user_id', myId)
-
-    if (!locations) return
-
-    const withDistance = locations.map(loc => {
-      const dist = getDistance(lat, lng, loc.latitude, loc.longitude)
-      return { ...loc, distance: dist }
-    }).filter(loc => loc.distance <= 10)
-      .sort((a, b) => a.distance - b.distance)
-
-    setNearbyUsers(withDistance)
-  }
-
-  function getDistance(lat1: number, lng1: number, lat2: number, lng2: number) {
-    const R = 3958.8
-    const dLat = (lat2 - lat1) * Math.PI / 180
-    const dLng = (lng2 - lng1) * Math.PI / 180
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLng/2) * Math.sin(dLng/2)
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-  }
-
-  function formatDistance(miles: number) {
-    if (miles < 0.1) return 'Very close'
-    if (miles < 1) return `${(miles * 5280).toFixed(0)} ft away`
-    return `${miles.toFixed(1)} mi away`
-  }
-
-  const filtered = nearbyUsers.filter(u => {
-    if (filter === 'drivers') return u.profiles?.is_driver
-    if (filter === 'riders') return !u.profiles?.is_driver
-    return true
+    navigator.geolocation.getCurrentPosition(resolve, error => reject(new Error(positionError(error))), {
+      enableHighAccuracy: false, timeout: 15000, maximumAge: 15000,
+    })
   })
+}
 
-  return (
-    <div style={{ minHeight: '100vh', background: '#111', paddingBottom: '80px' }}>
+function coarsePosition(position: GeolocationPosition) {
+  return {
+    latitude: Math.round(position.coords.latitude * 50) / 50,
+    longitude: Math.round(position.coords.longitude * 50) / 50,
+  }
+}
 
-      {/* Header */}
-      <div style={{ background: '#111', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '0.5px solid #222', position: 'sticky', top: 0, zIndex: 10 }}>
-        <span style={{ color: '#e0e0e0', fontSize: '17px', fontWeight: '600', letterSpacing: '1px' }}>
-          📍 Nearby
-        </span>
-        <span style={{ color: '#444', fontSize: '12px' }}>
-          {myLocation ? '🟢 Live' : '⏳ Locating...'}
-        </span>
+function message(error: unknown) {
+  return error instanceof Error ? error.message : 'Location is temporarily unavailable. Please try again.'
+}
+
+async function locationRequest<T>(path: string, options: RequestInit = {}) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    return await apiRequest<T>(path, { ...options, signal: controller.signal })
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('The location service timed out. Check your connection and try again.')
+    throw error
+  } finally { clearTimeout(timeout) }
+}
+
+function stopOnServer(session?: string | null) {
+  return locationRequest<{ stopped: boolean }>('/api/location', {
+    method: 'POST', body: JSON.stringify({ action: 'stop', ...(session ? { sharingId: session } : {}) }), keepalive: true,
+  })
+}
+
+export default function NearbyPage() {
+  const [status, setStatus] = useState<LocationStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [sharing, setSharing] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [result, setResult] = useState<NearbyResult | null>(null)
+  const [searchArea, setSearchArea] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('Location sharing is off on this page.')
+  const [clock, setClock] = useState(0)
+  const watch = useRef<number | null>(null)
+  const refresh = useRef<ReturnType<typeof setInterval> | null>(null)
+  const session = useRef<string | null>(null)
+  const pendingStop = useRef<string | null>(null)
+  const generation = useRef(0)
+  const searchGeneration = useRef(0)
+  const mounted = useRef(false)
+
+  const clearCapture = useCallback(() => {
+    generation.current += 1
+    if (watch.current !== null) navigator.geolocation.clearWatch(watch.current)
+    if (refresh.current !== null) clearInterval(refresh.current)
+    watch.current = null
+    refresh.current = null
+    const previous = session.current
+    session.current = null
+    return previous
+  }, [])
+
+  useEffect(() => {
+    mounted.current = true
+    let current = true
+    const initialGeneration = generation.current
+    void locationRequest<LocationStatus>('/api/location').then(data => {
+      if (!current || generation.current !== initialGeneration) return
+      setStatus(data)
+      if (data.sharing) setNotice('Another sharing session is active. You can stop it here.')
+    }).catch(error => {
+      if (current && generation.current === initialGeneration) setError(message(error))
+    }).finally(() => { if (current) setLoading(false) })
+
+    const timer = setInterval(() => setClock(Date.now()), 1000)
+    function cleanupSharing() {
+      const previous = clearCapture() || pendingStop.current
+      if (previous) {
+        pendingStop.current = previous
+        void stopOnServer(previous).catch(() => { /* Presence expires within two minutes. */ })
+      }
+    }
+    // Leaving the page must not silently restart sharing on return.
+    function onPageHide() {
+      cleanupSharing()
+      searchGeneration.current += 1
+      setSharing(false)
+      setStarting(false)
+      setSearching(false)
+      setResult(null)
+      setSearchArea(null)
+      setNotice('Device tracking stopped. If removal cannot be confirmed, the last position expires within two minutes.')
+    }
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      current = false
+      mounted.current = false
+      searchGeneration.current += 1
+      clearInterval(timer)
+      window.removeEventListener('pagehide', onPageHide)
+      cleanupSharing()
+    }
+  }, [clearCapture])
+
+  async function stopSharing() {
+    const previous = clearCapture() || pendingStop.current
+    setSharing(false)
+    setStarting(false)
+    setStopping(true)
+    setError('')
+    setNotice('Device tracking stopped. Confirming removal from nearby discovery…')
+    try {
+      // An explicit Stop also stops other tabs/devices for this account.
+      await stopOnServer()
+      pendingStop.current = null
+      if (!mounted.current) return
+      setStatus(value => value ? { ...value, sharing: false, locationSharing: false } : value)
+      setNotice('Location sharing is off. Your position has been removed from nearby discovery.')
+    } catch (error) {
+      pendingStop.current = previous
+      if (mounted.current) {
+        setError(message(error) + ' Retry Stop sharing to confirm removal.')
+        setNotice('Device tracking is off. The server could not confirm removal; the last position expires within two minutes.')
+      }
+    } finally { if (mounted.current) setStopping(false) }
+  }
+
+  async function startSharing() {
+    if (starting || stopping || sharing) return
+    setError('')
+    if (!window.isSecureContext || !navigator.geolocation) {
+      setError('Location requires a supported browser and a secure connection.')
+      return
+    }
+    const activeGeneration = ++generation.current
+    setStarting(true)
+    setNotice('Checking Driver eligibility…')
+    try {
+      const started = await locationRequest<SharingSession>('/api/location', { method: 'POST', body: JSON.stringify({ action: 'start' }) })
+      if (!mounted.current || activeGeneration !== generation.current) {
+        void stopOnServer(started.sharingId).catch(() => { /* No coordinates were published. */ })
+        return
+      }
+      session.current = started.sharingId
+      pendingStop.current = null
+      setNotice('Waiting for your browser location permission and a device position…')
+      let updating = false
+      let lastSent = 0
+      const isCurrent = () => mounted.current && activeGeneration === generation.current
+
+      async function failSharing(reason: string) {
+        if (!isCurrent()) return
+        const previous = clearCapture()
+        const stoppedGeneration = generation.current
+        pendingStop.current = previous
+        setSharing(false)
+        setStarting(false)
+        setError(reason)
+        setNotice('Device tracking stopped. Removing your nearby position…')
+        try {
+          await stopOnServer(previous)
+          if (mounted.current && generation.current === stoppedGeneration) {
+            pendingStop.current = null
+            setStatus(value => value ? { ...value, sharing: false, locationSharing: false } : value)
+            setNotice('Location sharing is off.')
+          }
+        } catch {
+          if (mounted.current && generation.current === stoppedGeneration) {
+            setNotice('Device tracking is off. Retry Stop sharing to confirm removal; the last position expires within two minutes.')
+          }
+        }
+      }
+
+      async function publish(position: GeolocationPosition) {
+        if (!isCurrent() || updating || Date.now() - lastSent < 15000) return
+        if (Date.now() - position.timestamp > 60000) {
+          await failSharing('The device location is too old. Start sharing again to request a fresh position.')
+          return
+        }
+        updating = true
+        try {
+          await locationRequest<{ expiresAt: string }>('/api/location', {
+            method: 'POST', body: JSON.stringify({ action: 'update', sharingId: started.sharingId, ...coarsePosition(position) }),
+          })
+          if (!isCurrent()) return
+          lastSent = Date.now()
+          setStarting(false)
+          setSharing(true)
+          setStatus({ canShare: true, sharing: true, locationSharing: true, reason: null })
+          setNotice('Sharing an approximate Driver position. Updates expire within two minutes if sharing is interrupted.')
+        } catch (error) { await failSharing(message(error)) }
+        finally { updating = false }
+      }
+
+      watch.current = navigator.geolocation.watchPosition(
+        position => { void publish(position) },
+        error => { void failSharing(positionError(error)) },
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 15000 },
+      )
+      // Stationary devices need fresh fixes too; never renew presence with an old fix.
+      refresh.current = setInterval(() => {
+        if (!isCurrent()) return
+        void deviceLocation().then(publish).catch(error => failSharing(message(error)))
+      }, 30000)
+    } catch (error) {
+      if (mounted.current && activeGeneration === generation.current) {
+        const previous = clearCapture()
+        pendingStop.current = previous
+        if (previous) void stopOnServer(previous).catch(() => { /* Retry remains available. */ })
+        setStarting(false)
+        setError(message(error))
+        setNotice('Location sharing did not start. Use Stop sharing to confirm it is off.')
+      }
+    }
+  }
+
+  async function findNearby() {
+    if (searching) return
+    const activeSearch = ++searchGeneration.current
+    setSearching(true)
+    setError('')
+    setResult(null)
+    setSearchArea(null)
+    try {
+      const position = await deviceLocation()
+      if (!mounted.current || activeSearch !== searchGeneration.current) return
+      const area = coarsePosition(position)
+      const nearby = await locationRequest<NearbyResult>('/api/location/nearby', { method: 'POST', body: JSON.stringify(area) })
+      if (!mounted.current || activeSearch !== searchGeneration.current) return
+      setClock(Date.now())
+      setResult(nearby)
+      setSearchArea(area)
+    } catch (error) {
+      if (mounted.current && activeSearch === searchGeneration.current) setError(message(error))
+    } finally {
+      if (mounted.current && activeSearch === searchGeneration.current) setSearching(false)
+    }
+  }
+
+  const drivers = result?.drivers.filter(driver => Date.parse(driver.expiresAt) > clock) ?? []
+
+  return <AccountPage title="Nearby" showBack={false}>
+    <Feedback error={error} />
+    <section className="panel" aria-labelledby="nearby-drivers-heading">
+      <h2 id="nearby-drivers-heading">Find nearby Drivers</h2>
+      <p>See participating, verified Drivers within approximately 10 miles. Your search location is used once and is not published or saved.</p>
+      <button type="button" className="primary-button" onClick={() => void findNearby()} disabled={searching}>
+        {searching ? 'Finding nearby Drivers…' : 'Find nearby Drivers'}
+      </button>
+      {searchArea && <AreaMap key={`${searchArea.latitude},${searchArea.longitude}`} center={searchArea} />}
+      {!searchArea && !mapboxConfigured && <p className="status-note">The map is unavailable because Mapbox is not configured. The nearby list works without a map.</p>}
+      <div aria-live="polite" aria-busy={searching}>
+        {!result && !searching && <p className="muted">Choose Find nearby Drivers to request your device location.</p>}
+        {result && drivers.length === 0 && <p>No active Driver positions are available in this area. Refresh the search to check again.</p>}
+        {drivers.length > 0 && <>
+          <p>Up to 50 nearby Drivers. Positions and distances are approximate, not routes or travel distances.</p>
+          <ul className="data-list">{drivers.map(driver => <li key={driver.driverId}>
+            <strong>Nearby Driver</strong>
+            <span> · {driver.approximateMiles < 1 ? 'Less than approximately 1 mile away' : 'Approximately ' + driver.approximateMiles + (driver.approximateMiles === 1 ? ' mile away' : ' miles away')}</span>
+          </li>)}</ul>
+          <Link href="/feed" className="settings-link">Browse ride offers</Link>
+        </>}
       </div>
-
-      {/* Filter tabs */}
-      <div style={{ display: 'flex', background: '#1a1a1a', borderBottom: '0.5px solid #222' }}>
-        {(['all', 'drivers', 'riders'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            style={{ flex: 1, padding: '10px', border: 'none', background: 'transparent', color: filter === f ? '#c8b86a' : '#444', fontSize: '12px', fontWeight: filter === f ? '700' : '400', letterSpacing: '0.5px', cursor: 'pointer', borderBottom: filter === f ? '2px solid #c8b86a' : '2px solid transparent', textTransform: 'uppercase' }}>
-            {f === 'all' ? 'Everyone' : f}
-          </button>
-        ))}
+    </section>
+    <section className="panel" aria-labelledby="sharing-heading">
+      <h2 id="sharing-heading">Driver location sharing</h2>
+      <p>Start sharing to opt in to displaying your approximate position to signed-in members while this page is open. Rider positions are never shown in nearby discovery.</p>
+      {loading && <p role="status">Checking sharing availability…</p>}
+      {status?.reason && <p className="status-note">{status.reason} <Link href="/profile/settings">Review account settings</Link></p>}
+      <p role="status">{notice}</p>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <button type="button" className="primary-button" onClick={() => void startSharing()} disabled={starting || stopping || sharing}>
+          {starting ? 'Starting sharing…' : sharing ? 'Sharing location' : 'Start sharing'}
+        </button>
+        <button type="button" className="secondary-button" onClick={() => void stopSharing()} disabled={stopping}>
+          {stopping ? 'Stopping sharing…' : 'Stop sharing'}
+        </button>
       </div>
-
-      {loading && (
-        <div style={{ textAlign: 'center', padding: '60px 24px' }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>📍</div>
-          <p style={{ color: '#aaa', fontSize: '14px', marginBottom: '6px' }}>Finding your location...</p>
-          <p style={{ color: '#444', fontSize: '12px' }}>Make sure location is enabled</p>
-        </div>
-      )}
-
-      {locationError && (
-        <div style={{ margin: '20px 16px', background: '#2a1a1a', border: '0.5px solid #5a2a2a', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
-          <div style={{ fontSize: '28px', marginBottom: '10px' }}>📍</div>
-          <p style={{ color: '#f87171', fontSize: '14px', marginBottom: '6px' }}>{locationError}</p>
-          <p style={{ color: '#555', fontSize: '12px' }}>Go to your browser settings and allow location access for SeatBelt</p>
-        </div>
-      )}
-
-      {!loading && !locationError && (
-        <>
-          {/* Live map placeholder */}
-          <div style={{ margin: '16px', background: '#1a1a1a', borderRadius: '14px', border: '0.5px solid #2a2a2a', overflow: 'hidden', position: 'relative' }}>
-            <div style={{ height: '200px', background: 'linear-gradient(135deg, #1a1a2a, #1a2a1a)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px' }}>
-              {/* Radar effect */}
-              <div style={{ position: 'relative', width: '120px', height: '120px' }}>
-                {[1, 0.66, 0.33].map((scale, i) => (
-                  <div key={i} style={{
-                    position: 'absolute', top: '50%', left: '50%',
-                    width: `${120 * scale}px`, height: `${120 * scale}px`,
-                    borderRadius: '50%', border: '0.5px solid #2a4a2a',
-                    transform: 'translate(-50%, -50%)'
-                  }} />
-                ))}
-                {/* Center dot - me */}
-                <div style={{ position: 'absolute', top: '50%', left: '50%', width: '12px', height: '12px', borderRadius: '50%', background: '#c8b86a', transform: 'translate(-50%, -50%)', boxShadow: '0 0 8px #c8b86a' }} />
-                {/* Nearby user dots */}
-                {filtered.slice(0, 6).map((u, i) => {
-                  const angle = (i / Math.max(filtered.length, 1)) * 360
-                  const radius = Math.min(u.distance / 10, 0.9) * 50
-                  const x = 50 + radius * Math.cos(angle * Math.PI / 180)
-                  const y = 50 + radius * Math.sin(angle * Math.PI / 180)
-                  return (
-                    <div key={i} style={{
-                      position: 'absolute', top: `${y}%`, left: `${x}%`,
-                      width: '10px', height: '10px', borderRadius: '50%',
-                      background: u.profiles?.is_driver ? '#6dba6d' : '#7ab3d4',
-                      transform: 'translate(-50%, -50%)',
-                      boxShadow: `0 0 6px ${u.profiles?.is_driver ? '#6dba6d' : '#7ab3d4'}`
-                    }} />
-                  )
-                })}
-              </div>
-              <div style={{ display: 'flex', gap: '16px', marginTop: '4px' }}>
-                <span style={{ fontSize: '11px', color: '#555' }}>
-                  <span style={{ color: '#c8b86a' }}>●</span> You
-                </span>
-                <span style={{ fontSize: '11px', color: '#555' }}>
-                  <span style={{ color: '#6dba6d' }}>●</span> Drivers
-                </span>
-                <span style={{ fontSize: '11px', color: '#555' }}>
-                  <span style={{ color: '#7ab3d4' }}>●</span> Riders
-                </span>
-              </div>
-            </div>
-            <div style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', color: '#555' }}>
-                {filtered.length} {filter === 'all' ? 'people' : filter} within 10 miles
-              </span>
-              <span style={{ fontSize: '11px', color: '#333' }}>
-                {myLocation ? `${myLocation.latitude.toFixed(4)}, ${myLocation.longitude.toFixed(4)}` : ''}
-              </span>
-            </div>
-          </div>
-
-          {/* Nearby list */}
-          <div style={{ padding: '0 16px' }}>
-            <div style={{ fontSize: '11px', color: '#555', letterSpacing: '0.5px', marginBottom: '12px' }}>
-              NEARBY {filter.toUpperCase()}
-            </div>
-
-            {filtered.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px 20px', background: '#1a1a1a', borderRadius: '12px', border: '0.5px solid #2a2a2a' }}>
-                <div style={{ fontSize: '32px', marginBottom: '12px' }}>🔍</div>
-                <p style={{ color: '#aaa', fontSize: '14px', marginBottom: '6px' }}>No one nearby yet</p>
-                <p style={{ color: '#444', fontSize: '12px' }}>Share SeatBelt with friends to build your local network</p>
-              </div>
-            )}
-
-            {filtered.map((user, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#1a1a1a', borderRadius: '12px', padding: '14px', border: '0.5px solid #2a2a2a', marginBottom: '10px' }}>
-                {/* Avatar */}
-                <div style={{ width: '46px', height: '46px', borderRadius: '50%', background: user.profiles?.is_driver ? '#1e2a1e' : '#1e1e2a', border: `1.5px solid ${user.profiles?.is_driver ? '#6dba6d' : '#7ab3d4'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '600', fontSize: '14px', color: user.profiles?.is_driver ? '#6dba6d' : '#7ab3d4', flexShrink: 0 }}>
-                  {user.profiles?.avatar_initials || '??'}
-                </div>
-
-                {/* Info */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-                    <span style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: '500' }}>
-                      {user.profiles?.full_name || 'User'}
-                    </span>
-                    <span style={{ background: user.profiles?.is_driver ? '#1e2a1e' : '#1e1e2a', color: user.profiles?.is_driver ? '#6dba6d' : '#7ab3d4', fontSize: '9px', fontWeight: '700', padding: '2px 7px', borderRadius: '99px', letterSpacing: '0.5px' }}>
-                      {user.profiles?.is_driver ? 'DRIVER' : 'RIDER'}
-                    </span>
-                  </div>
-                  {user.profiles?.is_driver && user.profiles?.car_make && (
-                    <div style={{ fontSize: '11px', color: '#555', marginBottom: '2px' }}>
-                      🚗 {user.profiles.car_make} {user.profiles.car_model}
-                    </div>
-                  )}
-                  <div style={{ fontSize: '11px', color: '#444' }}>
-                    📍 {formatDistance(user.distance)}
-                  </div>
-                </div>
-
-                {/* Action */}
-                <button
-                  onClick={() => router.push('/feed')}
-                  style={{ background: '#1e2a1e', color: '#6dba6d', border: '0.5px solid #2a4a2a', borderRadius: '99px', padding: '7px 14px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', flexShrink: 0 }}>
-                  View feed
-                </button>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Bottom nav */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#111', borderTop: '0.5px solid #222', display: 'flex', padding: '8px 0' }}>
-        {[
-          { icon: '🏠', label: 'Feed', path: '/feed' },
-          { icon: '📍', label: 'Nearby', path: '/nearby' },
-          { icon: '➕', label: 'Post', path: '/post' },
-          { icon: '💬', label: 'DMs', path: '/dms' },
-          { icon: '👤', label: 'Profile', path: '/profile' },
-        ].map((item, i) => (
-          <div key={i} onClick={() => router.push(item.path)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', cursor: 'pointer' }}>
-            <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            <span style={{ fontSize: '9px', color: i === 1 ? '#c8b86a' : '#444' }}>{item.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+    </section>
+    <section className="panel" aria-labelledby="travel-history-heading">
+      <h2 id="travel-history-heading">Travel History</h2>
+      <p>No route or travel distance is recorded by Nearby. Your private Travel History shows completed rides and verified distance when available.</p>
+      <Link href="/profile/settings/travel-history" className="settings-link">Open Travel History</Link>
+    </section>
+  </AccountPage>
 }
