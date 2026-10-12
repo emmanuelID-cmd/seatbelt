@@ -19,9 +19,9 @@ If you do not agree, do not create an account or use the Platform.
 
 The Platform is available only to individuals who are at least eighteen (18) years old.
 
-Seatbelt may require identity and eligibility verification before permitting access to some or all Platform features. Verification may include government-issued identification, document numbers, domicile information, and a live visual or liveness check.
+Seatbelt requires identity verification for Riders before they post a trip or accept a ride arrangement, and may require identity checks for other Platform features. Drivers must also complete Driver License verification and separate Driver Eligibility requirements before Driver mode, offers, payouts, or location features are available. Stripe-hosted document checks may support a Driver License, government ID card, or passport where available. A U.S. ID-number check, including an SSN if selected, is offered only in the Driver Eligibility verification flow and is entered directly with Stripe.
 
-Seatbelt may store verification results and limited verification metadata. Identification images will be deleted after verification unless retention is reasonably necessary for safety, fraud prevention, disputes, investigations, legal claims, or legal compliance.
+Government-ID capture takes place in Stripe Identity's secure interface. Seatbelt retains verification results and limited status metadata rather than ID images or numbers; a verified Driver License expiration date may be retained to enforce current eligibility. Vehicle registration and insurance use the separate private Driver Eligibility workflow with authorized review, controlled retention and legal-hold safeguards. Provider coverage, retention requirements and any liveness configuration require legal/privacy review before public activation.
 
 You must provide accurate, current, and complete information and must not create or use an account for another person.
 
@@ -43,6 +43,8 @@ Drivers and Riders may enter into voluntary ride arrangements directly with one 
 
 The parties may determine or accept applicable pricing, timing, routing, pickup details, waiting periods, intermittent stops, cancellation terms, and other ride details through the Platform.
 
+In the current agreement flow, a Rider may state an estimated Wager Price range. A Driver may offer outside that estimate within the platform-wide $1.00–$999.00 limits. The Rider's acceptance confirms the agreement; no second Driver confirmation or new Rider-entered price is required. Accepted post terms are locked. An accepted unpaid agreement may be canceled through its ride controls. A payment reservation requires a support-led cancellation/refund review; no automatic cancellation fee or refund is implied. Existing rides may be completed or resolved safely after an account freeze, while new activity remains restricted.
+
 Seatbelt may establish platform rules, fees, safety requirements, eligibility requirements, and operational limits that apply to use of the Platform or participation in a ride arrangement.
 
 A ride arrangement does not create an employment, partnership, joint venture, agency, or fiduciary relationship between Seatbelt and a Driver or Rider.
@@ -59,7 +61,7 @@ When immediate danger exists, contact local emergency services first. You may al
 
 ## 7. Driver Verification and Rider Protection
 
-Seatbelt may require Drivers to complete identity, license, vehicle, background, or other verification steps before accessing or continuing to use Driver features.
+Seatbelt requires Riders to complete identity verification before posting or accepting ride arrangements. Drivers must complete identity verification, verify an active Driver License, and satisfy vehicle and Driver Eligibility requirements before accessing or continuing to use Driver features. A U.S. ID-number check, if offered for Driver Eligibility, is completed only in Stripe's secure flow.
 
 Verification is limited in scope and is based on information available at the time of review. A verification result does not certify, endorse, or guarantee a Driver, vehicle, trip, or future conduct.
 
@@ -144,6 +146,8 @@ Seatbelt and Drivers are not responsible for loss, theft, or damage occurring af
 Stripe processes payments for Seatbelt. Seatbelt remains responsible for Platform charges, ride fees, refunds, credits, and payment-related support. Users should contact Seatbelt first at support@useseatbelt.com.
 
 Before a charge, Seatbelt will disclose applicable prices, fees, payment methods, renewal terms, cancellation rules, and refund rules where applicable. Users may receive a payment confirmation or receipt.
+
+Ride payment amounts come from the accepted agreement. A checkout redirect or client-side success message is not proof of settlement; provider-confirmed events determine payment status. Hosted payment-method management, Driver payouts and paid subscriptions are available only when their actual provider configuration is ready. Account freezing requires provider confirmation before Seatbelt claims subscription collection is paused. Account deletion remains a request subject to retention and legal-hold review, and subscription cancellation is managed separately in Subscription settings. Configuration-dependent capabilities, including connected cameras, background checks, passkeys, SMS and international settlement, are unavailable until their approved prerequisites exist.
 
 Users may request or appeal a refund through Seatbelt support. Appeals may include additional information, timestamps, messages, GPS records, receipts, camera footage, side-camera footage, or other relevant evidence.
 

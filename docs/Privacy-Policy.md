@@ -19,7 +19,7 @@ Depending on how you use the Platform, we may collect:
 
 - name, email address, telephone number, domicile information, and account credentials;
 - age and identity-verification results;
-- limited identification metadata and document numbers;
+- limited identity-verification status metadata, without raw government-ID images or numbers in Seatbelt's ordinary account records;
 - Driver license, vehicle, registration, insurance, and verification information;
 - payment and transaction information;
 - ride requests, pricing, cancellations, waiting periods, and trip details;
@@ -52,6 +52,8 @@ Seatbelt may use information to:
 
 ## 4. GPS and Location Information
 
+The current Nearby feature stores only rounded, opt-in Driver locations for short-lived discovery. The last discovery position expires within two minutes; precise device coordinates and route history are not persisted by that feature. Freezing an account, requesting deletion, stopping sharing, or losing Driver eligibility removes discovery access. An optional Mapbox area map receives only a rounded search-area center after the user chooses to show it; Driver positions are not sent to that map provider. Future ride telemetry described below requires separate provider configuration and approved controls before activation.
+
 During an active ride or applicable waiting period, participating Drivers and Riders may view live location information to coordinate pickup, route progress, distance, and estimated arrival.
 
 Seatbelt may collect and retain historical GPS information, including routes, arrival times, waiting periods, and related timestamps, for operations, safety, support, payment disputes, fraud prevention, investigations, and legal compliance.
@@ -82,11 +84,11 @@ Seatbelt may use authenticated-camera connection records, camera indicators, upl
 
 ## 6. Identity and Eligibility Verification
 
-Seatbelt may require users to verify that they are at least eighteen (18) years old and may require identity verification before allowing access to some or all Platform features.
+Seatbelt may require users, including Riders, to verify their identity before posting or accepting ride arrangements and may require additional identity and eligibility checks for Driver features. Stripe-hosted document verification may support a Driver License, government ID card, or passport, subject to provider availability. A U.S. ID-number check, including an SSN when offered by Stripe, is optional and limited to the Driver Eligibility verification flow.
 
 Verification may include domicile information, government-issued identification, country-standard document or identification numbers, and a live visual or liveness check.
 
-Seatbelt may use external verification providers. Seatbelt generally stores the verification result and limited metadata rather than the complete identification document. Identification images may be deleted after verification unless retention is reasonably necessary for safety, fraud prevention, disputes, investigations, legal claims, or legal compliance.
+Government-ID and any U.S. ID-number capture take place in Stripe Identity's secure interface. Seatbelt retains the Verification Session identifier, status, safe error state and relevant timestamps; for Driver License checks it may also retain the verified license expiration date needed to block expired licenses. Seatbelt does not copy ID images, SSNs, other ID numbers, or raw provider-reported birth date or address into account records. Users separately provide private account information for onboarding. Registration and insurance documents use the private Driver Eligibility workflow with authorized AAL2 administrator review, controlled retention and legal-hold safeguards. Driver mode stays unavailable when license expiration cannot be confirmed.
 
 Any future biometric, skeletal, or artificial-intelligence liveness feature will require separate technical, privacy, and legal review before implementation. Where required by law, Seatbelt will provide additional notice and obtain consent.
 
@@ -107,6 +109,8 @@ Email and in-app update notifications may be enabled by default. Text-message up
 In-app and web update notices may appear through the standard Bell notification icon. Notices may summarize changes, link to the full updated document, and link directly to the specific changed sections.
 
 Turning off notifications may cause users to miss important information about payments, pricing, renewals, data practices, safety requirements, or legal changes. Seatbelt may still deliver notices where permitted or required by law.
+
+Seatbelt may use Resend as a transactional-email processor for generic account, security, ride, payment, support and Driver Eligibility notices. Those messages contain only the recipient email address and a generic account-update message reasonably necessary for delivery; they do not include document details, message contents, support-request contents, attachments, reasons, expiration dates, or privileged links. Delivery requires verified sender configuration. SMS, closed-browser push, and marketing distribution remain unavailable until their providers and approved requirements exist; saving an optional preference does not activate a provider.
 
 ## 9. How We Share Information
 
@@ -143,7 +147,9 @@ Data may remain after account termination or deletion when reasonably necessary 
 
 ## 11. Account Controls and Privacy Requests
 
-Users may freeze, deactivate, or delete an account through available account settings. Seatbelt may explain the difference between freezing or deactivation and deletion before the user confirms the selection.
+Users may freeze an account or submit a deletion request through authenticated account settings. A freeze stops new activity and location sharing; any subscription collection pause is confirmed with the payment provider before being described as paused. Scheduled reactivation is processed by the configured daily maintenance workflow and can be delayed by provider failure or queued work. Account deletion remains a request until authorized retention and legal-hold review completes; submitting it does not immediately erase records or automatically cancel subscription renewal. Subscription cancellation is managed separately in Subscription settings. Existing ride completion, cancellation and private history remain available where necessary to resolve an agreement safely.
+
+Legal name, address, self-reported date of birth, phone and social details are held in private own-account records. Discoverable profiles use initials. Account portraits are private and displayed through short-lived owner access. Administrator analytics return aggregates; private support content is opened only through protected AAL2 routes with an access and response audit trail.
 
 Users may request an export of available personal information through an account-settings export function. Requests to correct information should be sent to support@useseatbelt.com and should identify the relevant date, time, information, requested correction, and reason.
 

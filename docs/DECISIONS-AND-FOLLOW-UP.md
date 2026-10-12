@@ -208,16 +208,16 @@ Status: Approved
 - Add a date picker and time picker to trip creation.
 - Retain the ASAP option; ASAP uses the current date and time.
 - Price range controls must increase in $1.00 increments.
-- Add a persistent back arrow to every page.
-- The back arrow returns to the previous URL or Home when no previous page is available.
+- Keep back arrows on secondary pages; use the previous URL or a safe parent page when no prior route is available.
+- Main application tabs (Feed, Nearby, Post, Messages, and Profile) have no back arrow because the shared bottom navigation moves between them.
 - Keep bottom navigation visible on standard application pages.
 - Hide bottom navigation inside account Settings and informational/legal pages, including Privacy Policy, Terms of Service, FAQs, DOs and DON'Ts, General Information, Data Usage, and future equivalent pages.
-- Create a reusable Universal Navigation skill covering the back arrow, persistent navigation, exceptions, and mode-aware Feed visibility.
+- Create a reusable Universal Navigation skill covering secondary-page back navigation, main-tab exceptions, persistent navigation, and mode-aware Feed visibility.
 ## Driver Identity and Vehicle Expiration Safeguards
 
 Status: Approved — Deferred Until Stripe Verification and Profile Are Live
 
-- Requirement: After identity verification is active, retain the selected identity-document type and expiration date in the account profile.
+- Requirement: Keep any verified Driver License expiration in the separate Driver License verification record so Driver mode can be blocked when the license expires. Do not place ID documents, ID numbers, or SSNs in Profile Account details.
 - Requirement: When an identity document is within one year of expiration, show a non-obstructing yellow notice above the Driver avatar that recommends renewal and links to the official DMV location/renewal search page; do not assume a state.
 - Requirement: When one month or less remains, replace the notice with a clear, non-obstructing red warning that directs the Driver to the same official DMV search page.
 - Requirement: Require Drivers to maintain applicable license, vehicle registration, and other mandatory Driver documentation and expiration dates. Determine the document set and renewal cadence by the Driver's actual jurisdiction and vehicle type; do not assume a monthly or yearly schedule.
@@ -237,12 +237,22 @@ Status: Approved — Deferred Until Signed-In Password Change Is Built
 
 Status: Approved / Attorney Review
 
-- Requirement: Government-issued ID capture and verification for Driver and Both accounts must be performed through Stripe Identity, not through a Seatbelt file-upload field.
+- Requirement: Government-issued identity verification for Riders and Drivers must be performed through Stripe Identity, not through a Seatbelt file-upload field. Riders must verify before posting or accepting ride arrangements.
 - Affected files: `src/app/verify-identity/page.tsx`, `src/app/api/identity/session/route.ts`, `src/app/api/stripe/webhook/route.ts`, `supabase/migrations/20260919074244_driver_identity_verification.sql`.
 - Implementation note: Seatbelt retains only the Stripe Verification Session ID, verification status, error status, and relevant timestamps. It does not retain ID images, ID numbers, raw date of birth, or raw address data.
-- Implementation note: Drivers are directed to the Stripe Identity flow when starting Driver mode. Stripe collects sensitive document data in its own secure interface.
+- Implementation note: Identity document choices may include a Driver License, government ID card, or passport where Stripe supports them. The Driver License is a separate Driver Eligibility check and must be verified, unexpired, and have a confirmed expiration date before Driver mode is enabled.
+- Implementation note: A U.S. ID-number check, which may involve an SSN, is available only from the Driver Eligibility flow for U.S. Driver accounts and is entered directly with Stripe. Seatbelt never collects or stores the SSN in Account details.
 - Attorney/privacy review: Update the Privacy Policy and Terms of Service before public release to describe Stripe Identity as a processor, the verification purpose, retention/deletion process, user rights, and any applicable biometric or identity-verification disclosures.
 - Open questions: Confirm the required document types, whether selfie/liveness verification is required, retention duration for verification metadata, and any jurisdiction-specific notices before enabling production verification.
+
+## Rider Identity and Separate Driver License Gate
+
+Status: Approved / Implemented locally / Provider and legal review pending
+
+- Requirement: Offer general Stripe-hosted identity verification to Riders as well as Drivers. Riders must complete it before creating Rider trip posts or accepting rides.
+- Requirement: Keep the verified Driver License and its confirmed expiration date separate from general identity verification; Driver mode and offers remain blocked if the license is missing, expired, or its expiration cannot be confirmed.
+- Requirement: SSNs belong only in the optional U.S. Driver Eligibility ID-number check hosted by Stripe. Never place SSNs in Profile Account details, Seatbelt forms, logs, or ordinary account exports.
+- Open questions: Confirm Stripe Identity availability, restricted results-key permissions, supported documents by jurisdiction, legal basis and notice/consent wording before production activation.
 ## Driver Eligibility Documents and Approval
 
 Status: Approved — Implemented Private Upload Workflow / Attorney Review
@@ -257,7 +267,7 @@ Status: Approved — Implemented Private Upload Workflow / Attorney Review
 - Sequencing decision: Build the private Driver Eligibility document-upload and user-status workflow before the Admin/Staff reviewer-role system. Uploaded eligibility documents remain pending and inaccessible to staff until the future reviewer roles and clearance controls are implemented; connect the two workflows at that later stage.
 - Attorney/privacy review: Required before implementation to establish document scope, collection method, access controls, retention/deletion, jurisdiction-specific insurance and transportation-network requirements, appeals, and staff-review authority.
 - Requirement: Incomplete Driver Eligibility uploads are tracked as private drafts and scheduled for deletion within 72 hours. Submitted documents remain private while awaiting the future authorized review workflow.
-- Implementation note: Vercel Hobby permits the protected Production Cron route to run once daily. Drafts become eligible after 48 hours so the next scheduled run removes them within the 72-hour window; `CRON_SECRET` must remain server-only. Cron is not invoked for Preview deployments.
+- Implementation note: Vercel Hobby permits the protected Production Cron route to run once daily. Drafts become eligible after 48 hours so the next scheduled run can remove them within the 72-hour window. The job processes up to 1,000 expired drafts and 1,000 reviewed rows within a bounded 180-second cleanup budget; if backlog remains it reports a failed maintenance run. Monitor backlog and confirm capacity before public release. `CRON_SECRET` must remain server-only. Cron is not invoked for Preview deployments.
 - Open questions: Confirm New York-specific required insurance coverage, registration/inspection requirements, background and motor-vehicle-record provider, document-review workflow, technical upload limits, and whether a specialized verification provider can validate each requirement.
 ## Phase 2 — Private Driver Eligibility Review Portal
 
@@ -270,6 +280,32 @@ Status: Approved — In Progress
 - Requirement: Drivers receive only safe signed-in status guidance; document details are not sent through ordinary email.
 - Staff accounts, automated DMV verification, external document providers, analytics, and notification delivery remain deferred.
 - Attorney/privacy review: Required before public release because this workflow processes registration, insurance, identity, access-control, and retention data.
+
+## Phase 3 — Retention and Generic Notifications
+
+Status: Approved — In Progress
+
+- Requirement: Incomplete Driver Eligibility drafts remain subject to the existing 72-hour deletion lifecycle. Reviewed registration and insurance documents receive a configurable 30-day deletion deadline, unless a legal hold is active.
+- Requirement: Review outcomes queue generic email notices only. Messages must not reveal document type, rejection reason, expiration, attachment, or privileged link; detailed status remains available only after signed-in access.
+- Implementation note: Seatbelt uses Resend for transactional delivery through server-only RESEND_API_KEY and RESEND_FROM_EMAIL configuration. APP_URL may provide a standard signed-in Seatbelt link.
+- Implementation note: Notification delivery retries are bounded and cannot block a review decision. Delivery-event records retain only operational status and generic failure state.
+- Affected files: admin review API, protected cron routes, Vercel configuration, safe environment template, the Phase 3 migration, and applicable policy records.
+- Attorney/privacy review: Required before public release to confirm the final document-retention period, legal-hold process, Resend processor disclosure, and New York-specific obligations.
+- Open questions: Define legal-hold ownership and release process, final post-decision retention duration, and production sender-domain ownership before public launch.
+
+## Full Platform Builder Integration — 2026-10-11
+
+Status: Approved scope / Implemented locally / Unverified
+
+- Requirement: Preserve the approved full-platform scope, private onboarding, account-state and Driver-eligibility boundaries, and honest provider-unavailable states. Defer the combined verification pass until implementation is finished. The original build approval did not include staging, commits, pushes or live schema changes; the user later authorized a reviewed feature-branch commit and push. No live schema changes are authorized.
+- Affected files: Account/notification/support APIs and migrations; administrator analytics/support; profile/settings/guidance; ride agreements/history/reviews; billing/provider reconciliation; protected location; shared navigation/footer; environment template and policy drafts. Exact current ranges are recorded in `docs/FULL-PLATFORM-LINE-REFERENCE.md`.
+- Implementation note: Account settings, account lifecycle audits and support notifications now commit transactionally. Freeze/resume holds billing locks through account finalization; failed resume finalization attempts to restore an indefinite collection pause. Deletion remains a reviewed request, cannot be undone through ordinary resume, and never automatically erases data. Safe existing-ride completion/cancellation and private history remain available after a freeze.
+- Implementation note: Legal names move into private account records; discoverable profile names are initials. Signup/returning-account onboarding, driver-mode activation, offers, payments and location use account/eligibility checks. Review APIs omit anonymous reviewer identifiers. Administrator support content access and responses are audited behind founding-admin authority and AAL2.
+- Implementation note: One daily protected maintenance cron retains the existing draft/retention cleanup, processes due reactivation and renewal reminders, and delivers only generic emails using claimed queues. Cleanup processes up to 1,000 expired drafts and 1,000 reviewed rows within a bounded 180-second budget and reports a remaining backlog as a failed run. Claims allow at most five attempts and ten messages per source per invocation. Reactivation is limited to twenty candidates with a sixty-second admission budget; failures leave recoverable states. Provider outages, daily scheduling jitter and backlog can delay processing, so monitor queue health before relying on the 72-hour draft window.
+- Implementation note: Finance reports actual provider-confirmed gross ride volume, refunds and account spending by currency. Platform/subscription revenue, operating-cost instrumentation, automated incident coverage and external fraud monitoring remain unavailable until their reliable sources exist.
+- Open questions: Verify target migration history before deployment; configure Stripe products/Connect/webhooks/portal, Resend sender, Mapbox public token, Supabase secure-password change and Auth SMTP. Validate provider timed-to-indefinite pause behavior, cron Fluid Compute duration/backlog limits, privacy/legal retention ownership and public-release notices. Cameras, background checks, passkeys/SMS, marketing distribution, international settlement and route/distance recording still require separate real provider/legal prerequisites. Existing confidential working documents and recovery copies remain preserved; no secure archival destination or restore test was chosen.
+- Implementation status: The combined local lint, TypeScript, build, schema lint and focused account/tab smoke pass completed; SECURITY and REVIEWER rounds are complete. The clean migration chain is blocked by the missing legacy `public.profiles` baseline, and broad lifecycle/provider checks remain pending.
+- Next step: The implementation handoff and exact changed-line report are in `docs/FULL-PLATFORM-HANDOFF.md` and `docs/FULL-PLATFORM-LINE-REFERENCE.md`. Verify the authoritative migration baseline and cleanup capacity before deployment. BUDDY is conditional on the user's later request. The user explicitly authorized the current reviewed feature-branch commit and push; no deployment or merge is authorized.
 
 ## VERY IMPORTANT — External AGENTS.md Update
 

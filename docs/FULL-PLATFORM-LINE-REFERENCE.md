@@ -1,0 +1,157 @@
+# Full Platform Changed-Line Report
+
+Generated: 2026-10-12. Branch: feature/full-platform-completion.
+
+Baseline: repository HEAD `34ea98e97e6c9b90803cdf2bc8462a609a523e09`. The interrupted build has no separate clean resume baseline, so this report records the complete worktree snapshot against that HEAD and does not attribute every change to this continuation. Recovery copies under `.git/codex-recovery/20261009-full-platform/` remain preserved. This is a pre-commit snapshot; the user subsequently authorized a reviewed feature-branch commit and push.
+
+## Line Return Reference
+
+- `.env.example`: lines 10-24, 27-30 — added or modified content.
+- `.gitignore`: lines 51-55 — added or modified content.
+- `AGENTS.md`: lines 2, 5-8, 10-14 — added or modified content.
+- `AGENTS.md`: lines 4 — deleted or replaced content from HEAD.
+- `docs/DECISIONS-AND-FOLLOW-UP.md`: lines 211-212, 215, 220, 240, 243-244, 247-255, 270, 284-309 — added or modified content.
+- `docs/DECISIONS-AND-FOLLOW-UP.md`: lines 211-212, 215, 220, 240, 243, 260 — deleted or replaced content from HEAD.
+- `docs/PHASE-PLAN.md`: lines 29, 33-40, 44, 48-114 — added or modified content.
+- `docs/PHASE-PLAN.md`: lines 29, 33-35, 39, 43-45 — deleted or replaced content from HEAD.
+- `docs/Privacy-Policy.md`: lines 22, 55-56, 87, 91, 113-114, 150-152 — added or modified content.
+- `docs/Privacy-Policy.md`: lines 22, 85, 89, 146 — deleted or replaced content from HEAD.
+- `docs/Terms-of-Service.md`: lines 22, 24, 46-47, 64, 150-151 — added or modified content.
+- `docs/Terms-of-Service.md`: lines 22, 24, 62 — deleted or replaced content from HEAD.
+- `package.json`: lines 18, 23, 32 — added or modified content.
+- `package.json`: lines 18, 31 — deleted or replaced content from HEAD.
+- `package-lock.json`: lines 17, 22, 31, 321, 559-561, 571, 577, 581-583, 593, 599-618, 622-624, 638-640, 654-656, 660-662, 673-675, 679-681, 692-694, 698-700, 711-713, 717-719, 730-732, 736-738, 749-751, 755-757, 768-770, 774-776, 787-789, 793-795, 806-808, 812-814, 821, 827, 831-833, 837-839, 846, 852, 856-858, 862-864, 871, 877, 881-883, 887-889, 896, 902, 906-908, 912-914, 921, 927, 931-933, 937-939, 946, 952, 956-958, 962-964, 971, 977, 981-983, 987-989, 996, 1002, 1006-1034, 1038, 1041, 1044, 1051-1053, 1063, 1070-1072, 1082, 1089-1091, 1101, 1177-1179, 1183-1185, 1189, 1194-1196, 1210-1212, 1226-1228, 1232-1234, 1245-1247, 1251-1253, 1264-1266, 1270-1272, 1283-1285, 1289-1291, 1302-1304, 1318-1320, 1675-1677, 3058-3060, 3107-3109, 3126-3130, 3210-3212, 3677-3679, 3963-3965, 3969, 6604-6606, 6645-6647, 6650-6651, 6654, 6664-6672, 6717-6719, 7050-7052, 7069, 7648-7650, 7653, 7655, 7658, 7664-7693, 7697-7699, 8679-8681 — added or modified content.
+- `package-lock.json`: lines 17, 30, 552, 558-560, 570, 576, 580-582, 592, 598, 602-604, 618-620, 634-636, 650-652, 666-668, 682-684, 698-700, 714-716, 730-732, 746-748, 762-764, 774, 780, 784-786, 796, 802, 806-808, 818, 824, 828-830, 840, 846, 850-852, 862, 868, 872-874, 884, 890, 894-896, 906, 912, 916-918, 928, 934, 938-940, 944, 947, 950, 957-959, 969, 976-978, 988, 995-997, 1007, 1083-1085, 1089-1091, 1099-1101, 1115-1117, 1131-1133, 1147-1149, 1163-1165, 1179-1181, 1195-1197, 1211-1213, 1568-1570, 2951-2953, 3000-3002, 3019-3023, 3103-3105, 3491, 3571-3573, 3857-3859, 3863, 6498-6500, 6539-6541, 6544-6545, 6548, 6558-6566, 6591-6618, 6639-6641, 6972-6974, 6991, 7570-7573, 7575, 7577, 7579, 7582, 7588-7611, 7615-7617, 7619, 8598-8600 — deleted or replaced content from HEAD.
+- `src/app/about/page.tsx`: lines 106, 138 — added or modified content.
+- `src/app/about/page.tsx`: lines 106, 138 — deleted or replaced content from HEAD.
+- `src/app/api/admin/driver-eligibility/route.ts`: lines 7-15, 91-99, 101-112 — added or modified content.
+- `src/app/api/admin/driver-eligibility/route.ts`: lines 82-103, 105 — deleted or replaced content from HEAD.
+- `src/app/api/create-payment-intent/route.ts`: lines 2-3, 5-6, 8-53, 55-57 — added or modified content.
+- `src/app/api/create-payment-intent/route.ts`: lines 2, 4-10, 12-28, 30-39 — deleted or replaced content from HEAD.
+- `src/app/api/cron/driver-eligibility-upload-cleanup/route.ts`: lines 6-11, 21-22, 25-36, 38-51, 53-60, 62-73, 75-98, 101-108, 112 — added or modified content.
+- `src/app/api/cron/driver-eligibility-upload-cleanup/route.ts`: lines 15-33, 37-39, 41-42, 45-49, 52, 56 — deleted or replaced content from HEAD.
+- `src/app/api/driver-eligibility/route.ts`: lines 3-4, 52, 55-59, 92, 95, 106-108, 112-120, 122, 134, 139-143, 148-151, 153-154, 157, 160-172, 182-183 — added or modified content.
+- `src/app/api/driver-eligibility/route.ts`: lines 50, 85, 88, 103, 115, 124, 126, 131 — deleted or replaced content from HEAD.
+- `src/app/api/identity/session/route.ts`: lines 4, 8-9, 11-25, 27-28, 31-32, 39-112, 116-118, 120-126, 128-134, 141-173, 175, 177-192, 194-212, 216-230, 232-233, 235-242 — added or modified content.
+- `src/app/api/identity/session/route.ts`: lines 9-12, 15-16, 26-34, 36-46, 48-50, 57-68, 70, 72-82, 84-88, 93-94, 96-115 — deleted or replaced content from HEAD.
+- `src/app/api/stripe/webhook/route.ts`: lines 4, 31, 36-58, 61-62, 64 — added or modified content.
+- `src/app/api/stripe/webhook/route.ts`: lines 30, 35-39, 42-43, 45 — deleted or replaced content from HEAD.
+- `src/app/components/PaymentModal.tsx`: lines 2-3, 6-7, 9-11, 13, 17, 19-28, 30-35, 38-41, 43-47, 49-53, 55-80 — added or modified content.
+- `src/app/components/PaymentModal.tsx`: lines 2, 6, 8, 13-32, 34-74, 77-85, 87-89, 91-102, 104-143 — deleted or replaced content from HEAD.
+- `src/app/dms/page.tsx`: lines 2-5, 7, 9-17 — added or modified content.
+- `src/app/dms/page.tsx`: lines 2-4, 7-141 — deleted or replaced content from HEAD.
+- `src/app/driver-eligibility/page.tsx`: lines 21, 70, 103, 229-233 — added or modified content.
+- `src/app/feed/page.tsx`: lines 2-8, 11-19, 21-32 — added or modified content.
+- `src/app/feed/page.tsx`: lines 2-49, 52-120, 122-291 — deleted or replaced content from HEAD.
+- `src/app/globals.css`: lines 36-103 — added or modified content.
+- `src/app/globals.css`: lines 36 — deleted or replaced content from HEAD.
+- `src/app/landing/page.tsx`: lines 129, 207 — added or modified content.
+- `src/app/landing/page.tsx`: lines 129, 207 — deleted or replaced content from HEAD.
+- `src/app/layout.tsx`: lines 2, 14, 17 — added or modified content.
+- `src/app/layout.tsx`: lines 13, 16 — deleted or replaced content from HEAD.
+- `src/app/login/page.tsx`: lines 8-9, 144-154, 157, 162-169, 199, 205, 252, 325 — added or modified content.
+- `src/app/login/page.tsx`: lines 143, 178, 184, 231, 304 — deleted or replaced content from HEAD.
+- `src/app/messages/[tripId]/page.tsx`: lines 2-6, 9, 11-32, 34-37, 39-42, 44-66 — added or modified content.
+- `src/app/messages/[tripId]/page.tsx`: lines 2-6, 10-74, 76-138, 140-143, 145-461 — deleted or replaced content from HEAD.
+- `src/app/nearby/page.tsx`: lines 3-7, 9-10, 12-38, 40-44, 46-49, 52-56, 58-61, 63, 65-67, 69-78, 80-82, 84, 86-104, 106-115, 117-127, 129-157, 159-180, 182-203, 205-226, 228-247, 249-269, 271-292, 294, 296-331, 333-340 — added or modified content.
+- `src/app/nearby/page.tsx`: lines 2-4, 6-22, 24-27, 29-31, 33-34, 36-39, 43-83, 86-94, 96-100, 102-105, 108-109, 111-119, 121-129, 131-137, 139-145, 147-201, 203-207, 209-215, 217-222, 224-242, 244-254, 256-269, 271-273 — deleted or replaced content from HEAD.
+- `src/app/post/page.tsx`: lines 2-18, 20-44, 46-59 — added or modified content.
+- `src/app/post/page.tsx`: lines 2-9, 11-60, 62-381 — deleted or replaced content from HEAD.
+- `src/app/profile/page.tsx`: lines 3-24, 26-32, 34-46, 48-54, 56-70, 72-75 — added or modified content.
+- `src/app/profile/page.tsx`: lines 2-4, 6-65, 67-93, 95-98, 100-112, 115-331 — deleted or replaced content from HEAD.
+- `src/app/profile/settings/page.tsx`: lines 5-8, 12-13, 17, 19-25, 27-31, 35-46, 48-49, 51-84 — added or modified content.
+- `src/app/profile/settings/page.tsx`: lines 5-7, 11-13, 17, 19-34, 36-48, 51-56, 58-74, 76-91, 93-118 — deleted or replaced content from HEAD.
+- `src/app/verify-identity/page.tsx`: lines 1, 5, 10-11, 14-16, 18-20, 25, 28-33, 40-43, 49, 65-71, 85-88, 90-114 — added or modified content.
+- `src/app/verify-identity/page.tsx`: lines 1, 5, 10-14, 17, 23, 26-27, 34-36, 42, 58-66, 68, 73, 82-103, 105-126 — deleted or replaced content from HEAD.
+- `src/components/SiteFooter.tsx`: lines 5, 17 — added or modified content.
+- `src/components/SiteFooter.tsx`: lines 5-16, 28 — deleted or replaced content from HEAD.
+- `vercel.json`: lines 5, 9 — added or modified content.
+- `vercel.json`: lines 5, 9 — deleted or replaced content from HEAD.
+- `.agents/skills/universal-navigation/SKILL.md`: lines 1-19 — created/untracked file; all present lines differ from HEAD.
+- `docs/FULL-PLATFORM-HANDOFF.md`: lines 1-180 — created/untracked file; all present lines differ from HEAD.
+- `docs/FULL-PLATFORM-LINE-REFERENCE.md`: lines 158 — generated report; all present lines are new against HEAD.
+- `src/app/admin/analytics/page.tsx`: lines 1-40 — created/untracked file; all present lines differ from HEAD.
+- `src/app/admin/page.tsx`: lines 1-3 — created/untracked file; all present lines differ from HEAD.
+- `src/app/admin/support/page.tsx`: lines 1-24 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/account/avatar/route.ts`: lines 1-34 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/account/export/route.ts`: lines 1-20 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/account/route.ts`: lines 1-133 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/admin/analytics/route.ts`: lines 1-25 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/admin/support/route.ts`: lines 1-37 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/billing/checkout/route.ts`: lines 1-56 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/billing/connect/route.ts`: lines 1-28 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/billing/payment-methods/route.ts`: lines 1-21 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/billing/payment-status/route.ts`: lines 1-14 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/billing/portal/route.ts`: lines 1-20 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/billing/route.ts`: lines 1-52 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/billing/subscription/route.ts`: lines 1-21 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/billing/webhook/route.ts`: lines 1-154 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/cron/driver-eligibility-notifications/route.ts`: lines 1-13 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/cron/platform-maintenance/route.ts`: lines 1-19 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/location/nearby/route.ts`: lines 1-20 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/location/route.ts`: lines 1-32 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/notifications/route.ts`: lines 1-26 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/reviews/route.ts`: lines 1-29 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/[rideId]/route.ts`: lines 1-9 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/_server.ts`: lines 1-94 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/accept/route.ts`: lines 1-8 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/conversations/[tripId]/route.ts`: lines 1-51 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/conversations/route.ts`: lines 1-29 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/offers/route.ts`: lines 1-9 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/posts/[tripId]/route.ts`: lines 1-30 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/posts/route.ts`: lines 1-35 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/rides/route.ts`: lines 1-34 — created/untracked file; all present lines differ from HEAD.
+- `src/app/api/support/route.ts`: lines 1-23 — created/untracked file; all present lines differ from HEAD.
+- `src/app/notifications/page.tsx`: lines 1-10 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/_components.tsx`: lines 1-138 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/account/identification/page.tsx`: lines 1-33 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/account/page.tsx`: lines 1-165 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/data-usage/page.tsx`: lines 1-11 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/guidance/dos-and-donts/page.tsx`: lines 1-10 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/guidance/faqs/page.tsx`: lines 1-13 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/guidance/general/page.tsx`: lines 1-9 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/guidance/page.tsx`: lines 1-7 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/notifications/page.tsx`: lines 1-38 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/payment/_billing.tsx`: lines 1-40 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/payment/page.tsx`: lines 1-46 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/privacy/page.tsx`: lines 1-45 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/reviews/page.tsx`: lines 1-14 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/ride-history/_history.tsx`: lines 1-69 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/ride-history/page.tsx`: lines 1-2 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/security/page.tsx`: lines 1-60 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/subscription/page.tsx`: lines 1-74 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/support/page.tsx`: lines 1-42 — created/untracked file; all present lines differ from HEAD.
+- `src/app/profile/settings/travel-history/page.tsx`: lines 1-3 — created/untracked file; all present lines differ from HEAD.
+- `src/components/AccountPage.tsx`: lines 1-18 — created/untracked file; all present lines differ from HEAD.
+- `src/components/AppChrome.tsx`: lines 1-68 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/accountTypes.ts`: lines 1-23 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/apiClient.ts`: lines 1-14 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/billing.ts`: lines 1-209 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/location.ts`: lines 1-78 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/phone.ts`: lines 1-16 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/platformMaintenance.ts`: lines 1-39 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/platformNotifications.ts`: lines 1-41 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/platformServer.ts`: lines 1-41 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/rides.ts`: lines 1-45 — created/untracked file; all present lines differ from HEAD.
+- `src/lib/stripeIdentity.ts`: lines 1-31 — created/untracked file; all present lines differ from HEAD.
+- `supabase/migrations/20260923031527_phase3_retention_notifications.sql`: lines 1-30 — created/untracked file; all present lines differ from HEAD.
+- `supabase/migrations/20260923033952_phase3_backfill_reviewed_document_retention.sql`: lines 1-17 — created/untracked file; all present lines differ from HEAD.
+- `supabase/migrations/20261010034001_full_platform_accounts_notifications.sql`: lines 1-358 — created/untracked file; all present lines differ from HEAD.
+- `supabase/migrations/20261010034047_protected_location_presence.sql`: lines 1-201 — created/untracked file; all present lines differ from HEAD.
+- `supabase/migrations/20261010034050_full_platform_billing.sql`: lines 1-129 — created/untracked file; all present lines differ from HEAD.
+- `supabase/migrations/20261010034100_ride_agreements_history_reviews.sql`: lines 1-262 — created/untracked file; all present lines differ from HEAD.
+- `supabase/migrations/20261012204705_account_private_gender_and_identity_purposes.sql`: lines 1-204 — created/untracked file; all present lines differ from HEAD.
+- `supabase/migrations/20261012221500_atomic_driver_eligibility_review.sql`: lines 1-96 — created/untracked file; all present lines differ from HEAD.
+
+## Review and Verification Status
+
+- Product implementation: prior Reviewer approval remains applicable. This report was regenerated from the zero-context HEAD diff and current untracked file lengths after stale ranges were found.
+- Local checks: lint passed with three warnings; TypeScript, production build, Supabase schema lint, synthetic local account API smoke, and main-tab HTTP smoke passed. SECURITY rounds completed.
+- Pending: broad lifecycle/provider acceptance and full migration-chain validation. The clean chain is blocked by the missing legacy public.profiles baseline; hosted Supabase was not changed.
+- Snapshot commit state: all 107 changed files were unstaged at report generation (32 tracked edits and 75 untracked files); the cached diff was empty. This report records the implementation snapshot and does not itself authorize staging, commit, push, or merge.
+
+## Secondary Checks
+
+- Trailing whitespace: PASS — verified after report regeneration.
+- Markdown fences: PASS — no fenced blocks in this report.
+- git diff --check: PASS on tracked worktree changes; Git may report line-ending conversion warnings.
