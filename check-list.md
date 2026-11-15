@@ -113,11 +113,12 @@ Last reviewed: 2026-11-14. This is a living record of the project, including wor
 ## Branch consolidation and next Git steps
 
 - [x] **Completed —** Fetched and compared fork/origin branch tips. At the last check, all local branch histories were ancestors of `feature/full-platform-completion`; no two-sided divergence was found.
-- [ ] **Incomplete —** Review the local-only `7a5e9cd` handoff and subsequent refund-policy and checklist commits before synchronization. Local commits put the branch ahead of the fork, not by themselves create two-sided divergence.
-- [ ] **Incomplete —** Review the existing draft PR targeting `main` against the newer integration workflow; do not merge or change its target without the appropriate authorization and current branch checks.
-- [ ] **Not started —** After these issues are resolved and the required approval is in place, create `developer` from a verified `main` baseline and use it for the approved consolidation path. Do not push Seatbelt to `main`.
-- [ ] **Not started —** Consider fast-forwarding or removing older feature branches only after their work is integrated, ancestry and recovery are verified, and any required cleanup approval is given.
-- [ ] **Incomplete —** Before any future commit/push, update this checklist from current evidence, resolve the solo handoff-instruction conflict, review exact outgoing files and histories, and use the required final metadata-only review-summary commit.
+- [x] **Completed —** On 2026-11-14, reviewed and published the saved handoff, refund-policy and checklist commits to `emmanuelID-cmd/seatbelt`, followed by metadata-only review commit `fed79c0`. Scanned all eight outgoing files and passed `git diff --check`.
+- [x] **Completed —** Retargeted PR #1 to `developer`, marked it ready, and integrated its exact head by fast-forward. GitHub verified PR #1 as MERGED at `fed79c0baafcb7da769b60c2b54d7fd234e8f006`. The historical Supabase Preview missing-`public.profiles` failure remains an acceptance issue.
+- [x] **Completed —** Bootstrapped `developer` from verified `main` commit `449037263dc2009f47126c3f48175ffe17fc8477` and published the approved integration. Local and remote `main` remain at that baseline.
+- [x] **Completed —** Verified every retired local/fork branch was an ancestor of the integration, fast-forwarded all eligible branches, then deleted six retired local branches and four retired fork branches. Created and published the new working lane `manny/seatbelt` from `developer`. The fork and local repository retain `main`, `developer` and `manny/seatbelt`. The separate original repository remains available through `origin`.
+- [x] **Completed —** Preserved the pre-cleanup refs and complete Git history in `.git/codex-recovery/20261114-branch-consolidation/seatbelt-before-cleanup.bundle`; `git bundle verify` passed. Existing recovery files and private ignored working files are preserved locally. This Git bundle is local recovery evidence; confidential-data archival remains pending above.
+- [x] **Completed —** Applied the solo-project handoff skill by preserving existing handoff files and recording current workflow evidence here. Future pushes require current baseline, diff, review and metadata-only summary checks.
 
 ## Maintenance rule
 
