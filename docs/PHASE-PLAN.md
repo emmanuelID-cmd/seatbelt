@@ -82,6 +82,8 @@ Implemented locally (unverified): Required-form summaries, field highlights, cle
 
 ### Phase 5C — Billing and communications
 
+Approved policy, implementation pending (2026-10-14): Managed ride credits follow `docs/REFUND-CREDIT-POLICY.md`: one credit per ride for the full eligible amount, no partial/split/duplicate credit, verified and audited issuance, and distinct request/processing/completion statuses. All issuance is currently human-reviewed; the future automated-credit limit is $20 per ride, with agent automation deferred. Credits over $20 and original-payment refunds require human review; cumulative activity review has no approved numeric limit yet. The credit ledger, balance/redemption and issuance workflow are not implemented or activated.
+
 Implemented locally (unverified): Authenticated payment creation using accepted agreement amounts, immutable reservation locks, provider-event reconciliation and webhook-confirmed success.
 Implemented locally (unverified): Hosted payment-method management, Driver payout onboarding, subscription checkout/portal/status and provider-confirmed pause/resume. Account lifecycle finalization holds the billing lock; failed resume finalization attempts to restore the collection pause.
 Implemented locally (unverified): Role-aware notification preferences, private inbox, generic transactional delivery with leased claims and five-attempt retry bounds, renewal reminders and daily account reactivation.

@@ -111,6 +111,7 @@ claiming clean-chain validation or preparing deployment migrations.
 
 ## Activation and coverage still outstanding
 
+- Refund/credit policy update (2026-10-14): `docs/REFUND-CREDIT-POLICY.md` records the approved one-ride/one-credit managed workflow and planned refund statuses. Credit-ledger issuance, balances/redemption, cumulative review settings and acceptance tests remain pending. All compensation issuance is human-reviewed; agent automation is deferred, with a future $20-per-ride credit boundary. Existing provider refund reporting does not establish credit-system readiness.
 - Stripe: configure matching test/live keys, trusted `BILLING_APP_URL`, Identity
   and Billing webhook secrets/delivery, actual tier prices and Connect readiness.
   The portal must enable payment-method updates and disable subscription updates.

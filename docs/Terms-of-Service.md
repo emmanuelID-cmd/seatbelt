@@ -153,6 +153,16 @@ Users may request or appeal a refund through Seatbelt support. Appeals may inclu
 
 Seatbelt may review trip, payment, communication, GPS, camera, and policy records before issuing a decision. Seatbelt will provide the refund decision, a general reason, and any available follow-up or appeal option.
 
+### Managed account credits (pending activation)
+
+Seatbelt's approved credit workflow is pending activation. Until it is available, requests remain human-reviewed through support. A Rider may accept an eligible account credit or request a refund to the original payment method; these are distinct resolutions. Original-payment refunds always require human review.
+
+Each eligible ride may receive at most one completed account-credit transaction for the full approved eligible amount. Partial credit awards, split credits, duplicate credits and dividing a request to fit a threshold are not permitted. Previous credits and refunds must be checked to prevent duplicate compensation. Each credit must have a unique transaction record linked to the ride and original payment.
+
+Credits exceeding $20 per ride require human review. Agent automation is deferred: every credit currently requires human review. If separately activated, automation would be limited to approved eligible account credits of $20 or less for one ride, after verification of eligibility, amount and transaction history. Multiple rides are evaluated independently, with cumulative account activity reviewed for unusual patterns.
+
+Seatbelt will distinguish a submitted or approved request from processing and completed credit/refund outcomes and provide a general decision reason and available appeal path. A request or approval does not itself mean compensation was issued. Credit eligibility, use and any applicable conditions must be disclosed before activation.
+
 Users retain lawful payment-dispute and chargeback rights. Nothing in these Terms prohibits rights that cannot be waived under applicable law.
 
 ## 15. Intellectual Property

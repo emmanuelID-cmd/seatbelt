@@ -307,6 +307,19 @@ Status: Approved scope / Implemented locally / Unverified
 - Implementation status: The combined local lint, TypeScript, build, schema lint and focused account/tab smoke pass completed; SECURITY and REVIEWER rounds are complete. The clean migration chain is blocked by the missing legacy `public.profiles` baseline, and broad lifecycle/provider checks remain pending.
 - Next step: The implementation handoff and exact changed-line report are in `docs/FULL-PLATFORM-HANDOFF.md` and `docs/FULL-PLATFORM-LINE-REFERENCE.md`. Verify the authoritative migration baseline and cleanup capacity before deployment. BUDDY is conditional on the user's later request. The user explicitly authorized the current reviewed feature-branch commit and push; no deployment or merge is authorized.
 
+## Managed Ride Credits and Refund Status — 2026-10-14
+
+Status: Approved policy / Credit workflow pending implementation and activation / Agent automation deferred / Attorney review required
+
+- Requirement: Offer a Rider the choice of an eligible account credit or a request for an original-payment refund. Allow at most one completed credit per eligible ride, for the full approved eligible amount; no arbitrary partial awards, split credits, duplicate credits or threshold splitting.
+- Requirement: Credits over $20 per ride and every original-payment refund require human review. While agent automation is deferred, all issuance is human-reviewed; the $20-or-less automated-credit threshold is a future boundary, not current authorization.
+- Requirement: Verify the requesting Rider, ride/payment identifiers, eligibility, authorized amount/currency and prior credits/refunds before issuance. Enforce one credit per ride atomically and idempotently; keep a unique linked transaction and approval audit trail. Reconcile uncertain transactions and prior compensation before retrying or switching resolution methods.
+- Requirement: Distinguish submitted, under-review, approved, processing, credited/refunded, declined and failed/reconciliation-required outcomes. Request submission or approval is not proof of issuance. Preserve the general-reason and appeal process and non-waivable payment rights.
+- Requirement: Review cumulative account activity and flag unusual patterns across rides; no cumulative dollar limit, time window or automatic denial threshold is set by this approval.
+- Affected files: `docs/REFUND-CREDIT-POLICY.md`, both Terms Markdown copies, `docs/PHASE-PLAN.md` and `docs/FULL-PLATFORM-HANDOFF.md`.
+- Implementation note: Existing support requests and provider-confirmed refund reporting do not implement an account-credit ledger, balance, redemption or issuance workflow. Those remain pending; this update does not issue compensation, change application behavior, apply a migration or activate an agent.
+- Open questions: Define eligible-amount rules, authorized reviewer permissions, funding/accounting, credit use/expiry/transfer terms, cumulative review settings, provider/dispute reconciliation and audit retention before activation. Attorney/payment review remains required.
+
 ## VERY IMPORTANT — External AGENTS.md Update
 
 This is **not** a Seatbelt decision or follow-up. It records a major update required in the external instruction file: `C:\Users\Github\AGENTS\AGENTS.md`.
